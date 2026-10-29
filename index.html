@@ -62,7 +62,6 @@
             const [books, setBooks] = useState([]);
             const [posts, setPosts] = useState([]);
 
-            // Состояния полей ввода
             const [newLostTitle, setNewLostTitle] = useState('');
             const [newLostDesc, setNewLostDesc] = useState('');
             const [newLostImage, setNewLostImage] = useState('');
@@ -123,17 +122,49 @@
                 });
             }, []);
 
-            // Универсальная функция загрузки фото с телефона или камеры
+            // Автоматическое сжатие изображений > 1.5 МБ
             const handleImageUpload = (e, setImageCallback) => {
                 const file = e.target.files[0];
                 if (!file) return;
-                if (file.size > 1048576) {
-                    alert("Файл слишком большой. Выберите фото размером до 1 МБ.");
-                    return;
-                }
+
                 const reader = new FileReader();
-                reader.onloadend = () => {
-                    setImageCallback(reader.result);
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        let width = img.width;
+                        let height = img.height;
+
+                        // Если картинка большая, пропорционально уменьшаем до лимита в 1000px
+                        const MAX_SIZE = 1000;
+                        if (width > MAX_SIZE || height > MAX_SIZE) {
+                            if (width > height) {
+                                height = Math.round((height * MAX_SIZE) / width);
+                                width = MAX_SIZE;
+                            } else {
+                                width = Math.round((width * MAX_SIZE) / height);
+                                height = MAX_SIZE;
+                            }
+                        }
+
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+
+                        // Подбираем качество сжатия, чтобы размер стал гарантированно меньше 1.5 МБ
+                        let quality = 0.8;
+                        let dataUrl = canvas.toDataURL('image/jpeg', quality);
+
+                        // Если полученный Base64 всё еще больше ~1.5MB, сжимаем сильнее
+                        while (dataUrl.length > 1.5 * 1024 * 1024 && quality > 0.2) {
+                            quality -= 0.1;
+                            dataUrl = canvas.toDataURL('image/jpeg', quality);
+                        }
+
+                        setImageCallback(dataUrl);
+                    };
+                    img.src = event.target.result;
                 };
                 reader.readAsDataURL(file);
             };
@@ -233,7 +264,7 @@
             return (
                 <div className="flex flex-col h-full bg-slate-50 text-slate-800 relative overflow-hidden">
                     
-                    {/* Минималистичная светлая шапка */}
+                    {/* Шапка */}
                     <header className="px-4 py-3 bg-white/80 backdrop-blur-md border-b border-slate-200/80 flex items-center justify-between sticky top-0 z-20">
                         <div className="flex items-center space-x-2.5">
                             <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-sm">
@@ -265,7 +296,7 @@
                         </div>
                     </header>
 
-                    {/* Основной контент */}
+                    {/* Контент */}
                     <main className="flex-1 p-4 overflow-y-auto space-y-4 pb-24">
                         
                         {/* ПОТЕРЯШКИ */}
@@ -289,13 +320,12 @@
                                             className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500 text-slate-800 placeholder-slate-400 resize-none h-16"
                                         />
                                         
-                                        {/* Загрузка фото */}
                                         <div className="flex items-center gap-2 pt-1">
                                             <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-3 py-2 rounded-xl font-medium border border-slate-200 transition flex items-center gap-1.5">
                                                 📷 Прикрепить фото
                                                 <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setNewLostImage)} className="hidden" />
                                             </label>
-                                            {newLostImage && <span className="text-[11px] text-emerald-600 font-medium">✓ Фото загружено</span>}
+                                            {newLostImage && <span className="text-[11px] text-emerald-600 font-medium">✓ Фото готово и сжато</span>}
                                         </div>
 
                                         <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-2.5 rounded-xl shadow-sm transition">
@@ -413,13 +443,12 @@
                                             className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500 text-slate-800 placeholder-slate-400 resize-none h-16"
                                         />
                                         
-                                        {/* Загрузка фото */}
                                         <div className="flex items-center gap-2 pt-1">
                                             <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-3 py-2 rounded-xl font-medium border border-slate-200 transition flex items-center gap-1.5">
                                                 📷 Прикрепить фото
                                                 <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setNewPostImage)} className="hidden" />
                                             </label>
-                                            {newPostImage && <span className="text-[11px] text-emerald-600 font-medium">✓ Фото загружено</span>}
+                                            {newPostImage && <span className="text-[11px] text-emerald-600 font-medium">✓ Фото готово и сжато</span>}
                                         </div>
 
                                         <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-2.5 rounded-xl shadow-sm transition">
@@ -521,7 +550,7 @@
                         </div>
                     )}
 
-                    {/* Минималистичная нижняя навигация */}
+                    {/* Навигация */}
                     <nav className="absolute bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-slate-200/80 px-4 py-2.5 flex justify-around z-10 shadow-sm">
                         <button 
                             onClick={() => setActiveTab('lost-found')}
@@ -535,7 +564,7 @@
                         </button>
                         <button 
                             onClick={() => setActiveTab('hub')}
-                            className={`flex flex-col items-center text-xs font-semibold transition px-4 py-1 rounded-xl ${activeTab === 'hub' ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:text-slate-600'}`}>
+                            className={`flex flex-col items-center text-xs font-semibold transition px-4 py-1 rounded-xl ${activeTab ===5 === activeTab ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:text-slate-600'}`}>
                             <span>Лента</span>
                         </button>
                     </nav>
