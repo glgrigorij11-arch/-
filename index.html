@@ -11,15 +11,24 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <!-- Babel для JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Иконки Lucide -->
+    <script src="https://unpkg.com/lucide@latest"></script>
     <!-- Telegram Web App SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
     <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        /* Плавные анимации и кастомный скроллбар */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    </style>
 </head>
-<body class="bg-slate-50 text-slate-800">
-    <div id="root"></div>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex justify-center items-center">
+    <div id="root" class="w-full max-w-md h-screen sm:h-[850px] sm:rounded-3xl sm:shadow-2xl overflow-hidden flex flex-col bg-slate-900 border border-slate-800 relative"></div>
 
     <script type="text/babel">
         // Твоя конфигурация Firebase
@@ -39,8 +48,8 @@
         }
         const db = firebase.database();
 
-        // ⚠️ ВПИШИ СЮДА СВОЙ TELEGRAM USERNAME (без знака @), чтобы иметь права админа на удаление любых записей!
-        const ADMIN_USERNAME = "destroyyyx"; 
+        // ⚠️ Впиши сюда свой Telegram username для прав админа
+        const ADMIN_USERNAME = "destroyyx"; 
 
         const { useState, useEffect } = React;
 
@@ -57,11 +66,16 @@
             const [books, setBooks] = useState([]);
             const [posts, setPosts] = useState([]);
 
+            // Состояния полей ввода с поддержкой изображений
             const [newLostTitle, setNewLostTitle] = useState('');
             const [newLostDesc, setNewLostDesc] = useState('');
+            const [newLostImage, setNewLostImage] = useState('');
+
             const [newBookTitle, setNewBookTitle] = useState('');
             const [newBookAuthor, setNewBookAuthor] = useState('');
+
             const [newPostText, setNewPostText] = useState('');
+            const [newPostImage, setNewPostImage] = useState('');
 
             // Авторизация через Telegram WebApp
             useEffect(() => {
@@ -93,9 +107,7 @@
                     if (data) {
                         const list = Object.keys(data).map(key => ({ firebaseId: key, ...data[key] }));
                         setLostItems(list.reverse());
-                    } else {
-                        setLostItems([]);
-                    }
+                    } else { setLostItems([]); }
                 });
 
                 db.ref('books').on('value', (snapshot) => {
@@ -103,9 +115,7 @@
                     if (data) {
                         const list = Object.keys(data).map(key => ({ firebaseId: key, ...data[key] }));
                         setBooks(list.reverse());
-                    } else {
-                        setBooks([]);
-                    }
+                    } else { setBooks([]); }
                 });
 
                 db.ref('posts').on('value', (snapshot) => {
@@ -113,9 +123,7 @@
                     if (data) {
                         const list = Object.keys(data).map(key => ({ firebaseId: key, ...data[key] }));
                         setPosts(list.reverse());
-                    } else {
-                        setPosts([]);
-                    }
+                    } else { setPosts([]); }
                 });
             }, []);
 
@@ -143,7 +151,6 @@
                 setShowAuthModal(false);
             };
 
-            // Проверка: является ли текущий юзер создателем или админом
             const canDelete = (itemAuthorUsername, itemAuthorTgId) => {
                 if (!currentUser) return false;
                 const isAdmin = currentUser.username && currentUser.username.toLowerCase() === ADMIN_USERNAME.toLowerCase();
@@ -151,7 +158,7 @@
                 return isAdmin || isAuthor;
             };
 
-            // Функции добавления
+            // Добавление потеряшки с фото
             const addLostItem = (e) => {
                 e.preventDefault();
                 if (!newLostTitle.trim() || !currentUser) return;
@@ -159,6 +166,7 @@
                 db.ref('lost_items').push({
                     title: newLostTitle,
                     desc: newLostDesc,
+                    imageUrl: newLostImage.trim(),
                     author: currentUser.name,
                     authorUsername: currentUser.username,
                     authorTgId: currentUser.tgId,
@@ -168,11 +176,10 @@
 
                 setNewLostTitle('');
                 setNewLostDesc('');
+                setNewLostImage('');
             };
 
-            const removeLostItem = (firebaseId) => {
-                db.ref(`lost_items/${firebaseId}`).remove();
-            };
+            const removeLostItem = (firebaseId) => db.ref(`lost_items/${firebaseId}`).remove();
 
             const addBook = (e) => {
                 e.preventDefault();
@@ -191,16 +198,16 @@
                 setNewBookAuthor('');
             };
 
-            const removeBook = (firebaseId) => {
-                db.ref(`books/${firebaseId}`).remove();
-            };
+            const removeBook = (firebaseId) => db.ref(`books/${firebaseId}`).remove();
 
+            // Добавление поста с фото
             const addPost = (e) => {
                 e.preventDefault();
                 if (!newPostText.trim() || !currentUser) return;
 
                 db.ref('posts').push({
                     text: newPostText,
+                    imageUrl: newPostImage.trim(),
                     author: currentUser.name,
                     authorUsername: currentUser.username,
                     authorTgId: currentUser.tgId,
@@ -209,96 +216,120 @@
                 });
 
                 setNewPostText('');
+                setNewPostImage('');
             };
 
-            const removePost = (firebaseId) => {
-                db.ref(`posts/${firebaseId}`).remove();
-            };
+            const removePost = (firebaseId) => db.ref(`posts/${firebaseId}`).remove();
 
             return (
-                <div className="min-h-screen flex flex-col max-w-md mx-auto bg-white shadow-xl relative pb-20">
-                    <header className="p-4 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-10">
+                <div className="flex flex-col h-full bg-slate-950 text-slate-100 relative overflow-hidden">
+                    
+                    {/* Верхняя неоновая панель / Шапка */}
+                    <header className="px-5 py-4 border-b border-slate-800/80 bg-slate-900/80 backdrop-blur-md flex items-center justify-between z-20">
                         <div className="flex items-center space-x-3">
-                            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-lg shadow-md shadow-blue-200">
-                                31
+                            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 p-0.5 shadow-lg shadow-indigo-500/20">
+                                <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center font-black text-white text-base">
+                                    31
+                                </div>
                             </div>
                             <div>
-                                <h1 className="font-bold text-slate-900 leading-tight">Лицей 31</h1>
-                                <p className="text-xs text-slate-500">Школьный Хаб</p>
+                                <h1 className="font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-400 text-base leading-tight tracking-wide">Лицей 31</h1>
+                                <p className="text-[11px] font-medium text-indigo-400">Школьный Цифровой Хаб</p>
                             </div>
                         </div>
 
                         <div>
                             {currentUser ? (
-                                <div className="flex items-center space-x-2 bg-slate-100 px-3 py-1.5 rounded-full">
-                                    <div className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs flex items-center font-bold justify-center">
+                                <div className="flex items-center space-x-2 bg-slate-800/90 border border-slate-700/60 px-3 py-1.5 rounded-2xl shadow-inner">
+                                    <div className="w-6 h-6 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 text-white text-xs flex items-center font-bold justify-center shadow">
                                         {currentUser.avatar}
                                     </div>
-                                    <span className="text-xs font-semibold text-slate-700">
+                                    <span className="text-xs font-semibold text-slate-200">
                                         {currentUser.username ? `@${currentUser.username}` : currentUser.name}
                                     </span>
                                 </div>
                             ) : (
                                 <button 
                                     onClick={() => setShowAuthModal(true)}
-                                    className="bg-blue-600 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow-sm hover:bg-blue-700 transition">
+                                    className="bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-lg shadow-indigo-600/30 transition transform active:scale-95">
                                     Войти
                                 </button>
                             )}
                         </div>
                     </header>
 
-                    <main className="flex-1 p-4 overflow-y-auto">
+                    {/* Основной контент */}
+                    <main className="flex-1 p-4 overflow-y-auto space-y-4 pb-24">
+                        
+                        {/* ВКЛАДКА: ПОТЕРЯШКИ */}
                         {activeTab === 'lost-found' && (
-                            <div className="space-y-4">
-                                <h2 className="text-lg font-bold text-slate-800">Потеряшки</h2>
+                            <div className="space-y-4 animate-fadeIn">
+                                <div className="flex justify-between items-center px-1">
+                                    <h2 className="text-lg font-black tracking-tight text-white flex items-center gap-2">
+                                        <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
+                                        Бюро Потеряшек
+                                    </h2>
+                                </div>
 
                                 {currentUser && (
-                                    <form onSubmit={addLostItem} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 space-y-2">
+                                    <form onSubmit={addLostItem} className="bg-slate-900/90 backdrop-blur p-4 rounded-3xl border border-slate-800 shadow-xl space-y-3">
+                                        <p className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Новое объявление</p>
                                         <input 
                                             type="text" 
                                             placeholder="Что потерялось или нашлось?" 
                                             value={newLostTitle}
                                             onChange={(e) => setNewLostTitle(e.target.value)}
-                                            className="w-full text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white"
+                                            className="w-full text-sm p-3 rounded-2xl bg-slate-950 border border-slate-800 focus:outline-none focus:border-indigo-500 text-slate-100 placeholder-slate-500 transition"
                                         />
-                                        <input 
-                                            type="text" 
-                                            placeholder="Описание, где найдено..." 
+                                        <textarea 
+                                            placeholder="Описание, где оставлено..." 
                                             value={newLostDesc}
                                             onChange={(e) => setNewLostDesc(e.target.value)}
-                                            className="w-full text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white"
+                                            className="w-full text-sm p-3 rounded-2xl bg-slate-950 border border-slate-800 focus:outline-none focus:border-indigo-500 text-slate-100 placeholder-slate-500 resize-none h-20 transition"
                                         />
-                                        <button type="submit" className="w-full bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl shadow-sm hover:bg-blue-700 transition">
-                                            Опубликовать объявление
+                                        <input 
+                                            type="url" 
+                                            placeholder="Ссылка на фото (необязательно, https://...)" 
+                                            value={newLostImage}
+                                            onChange={(e) => setNewLostImage(e.target.value)}
+                                            className="w-full text-sm p-3 rounded-2xl bg-slate-950 border border-slate-800 focus:outline-none focus:border-indigo-500 text-slate-100 placeholder-slate-500 transition"
+                                        />
+                                        <button type="submit" className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-sm font-bold py-3 rounded-2xl shadow-lg shadow-indigo-600/30 transition transform active:scale-95">
+                                            Опубликовать вещь
                                         </button>
                                     </form>
                                 )}
 
                                 <div className="space-y-3">
                                     {lostItems.length === 0 ? (
-                                        <p className="text-center text-slate-400 text-sm py-8">Пока нет объявлений о потерянных вещах.</p>
+                                        <div className="text-center py-12 text-slate-500 bg-slate-900/40 rounded-3xl border border-slate-800/50">
+                                            <p className="text-sm font-medium">Пока нет объявлений о потерянных вещах.</p>
+                                        </div>
                                     ) : (
                                         lostItems.map(item => (
-                                            <div key={item.firebaseId} className="p-4 rounded-2xl border border-slate-100 bg-white shadow-sm space-y-2">
+                                            <div key={item.firebaseId} className="bg-slate-900/90 border border-slate-800/80 rounded-3xl p-4 shadow-xl space-y-3 transition hover:border-slate-700">
+                                                {item.imageUrl && (
+                                                    <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 max-h-56">
+                                                        <img src={item.imageUrl} alt="Фото находки" className="w-full h-full object-cover hover:scale-105 transition duration-500" />
+                                                    </div>
+                                                )}
                                                 <div className="flex justify-between items-start">
-                                                    <h3 className="font-semibold text-slate-800 text-sm">{item.title}</h3>
-                                                    <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-medium">{item.classStr}</span>
+                                                    <h3 className="font-bold text-slate-100 text-sm tracking-wide">{item.title}</h3>
+                                                    <span className="text-[10px] bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 px-2.5 py-1 rounded-full font-bold">{item.classStr}</span>
                                                 </div>
-                                                <p className="text-xs text-slate-600">{item.desc}</p>
-                                                <div className="flex justify-between items-center pt-2 border-t border-slate-50 gap-2">
-                                                    <span className="text-[10px] text-slate-400">{item.author}</span>
-                                                    
+                                                {item.desc && <p className="text-xs text-slate-300 leading-relaxed">{item.desc}</p>}
+                                                <div className="flex justify-between items-center pt-2 border-t border-slate-800/80 gap-2">
+                                                    <span className="text-[10px] text-slate-500 font-medium">{item.author} • {item.date}</span>
                                                     <div className="flex gap-2">
                                                         <button 
                                                             onClick={() => openTelegramChat(item.authorUsername, item.authorTgId)}
-                                                            className="bg-sky-50 text-sky-600 hover:bg-sky-100 text-xs px-3 py-1.5 rounded-xl font-medium transition flex items-center gap-1">
+                                                            className="bg-sky-500/10 border border-sky-500/30 text-sky-400 hover:bg-sky-500/20 text-xs px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1">
                                                             ✈️ Написать
                                                         </button>
                                                         {canDelete(item.authorUsername, item.authorTgId) && (
                                                             <button 
                                                                 onClick={() => removeLostItem(item.firebaseId)}
-                                                                className="bg-red-50 text-red-600 hover:bg-red-100 text-xs px-3 py-1.5 rounded-xl font-medium transition">
+                                                                className="bg-rose-500/10 border border-rose-500/30 text-rose-400 hover:bg-rose-500/20 text-xs px-3 py-1.5 rounded-xl font-bold transition">
                                                                 Удалить
                                                             </button>
                                                         )}
@@ -311,50 +342,57 @@
                             </div>
                         )}
 
+                        {/* ВКЛАДКА: БИБЛИОТЕКА */}
                         {activeTab === 'library' && (
-                            <div className="space-y-4">
-                                <h2 className="text-lg font-bold text-slate-800">Библиотека</h2>
+                            <div className="space-y-4 animate-fadeIn">
+                                <h2 className="text-lg font-black tracking-tight text-white flex items-center gap-2 px-1">
+                                    <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                                    Лицейская Библиотека
+                                </h2>
                                 {currentUser && (
-                                    <form onSubmit={addBook} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 space-y-2">
+                                    <form onSubmit={addBook} className="bg-slate-900/90 p-4 rounded-3xl border border-slate-800 shadow-xl space-y-3">
+                                        <p className="text-xs font-bold text-purple-400 uppercase tracking-wider">Добавить книгу</p>
                                         <input 
                                             type="text" 
                                             placeholder="Название книги" 
                                             value={newBookTitle}
                                             onChange={(e) => setNewBookTitle(e.target.value)}
-                                            className="w-full text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white"
+                                            className="w-full text-sm p-3 rounded-2xl bg-slate-950 border border-slate-800 focus:outline-none focus:border-purple-500 text-slate-100 placeholder-slate-500 transition"
                                         />
                                         <input 
                                             type="text" 
                                             placeholder="Автор" 
                                             value={newBookAuthor}
                                             onChange={(e) => setNewBookAuthor(e.target.value)}
-                                            className="w-full text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white"
+                                            className="w-full text-sm p-3 rounded-2xl bg-slate-950 border border-slate-800 focus:outline-none focus:border-purple-500 text-slate-100 placeholder-slate-500 transition"
                                         />
-                                        <button type="submit" className="w-full bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl shadow-sm hover:bg-blue-700 transition">
-                                            Добавить книгу
+                                        <button type="submit" className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-sm font-bold py-3 rounded-2xl shadow-lg shadow-purple-600/30 transition">
+                                            Поделиться книгой
                                         </button>
                                     </form>
                                 )}
                                 <div className="space-y-3">
                                     {books.length === 0 ? (
-                                        <p className="text-center text-slate-400 text-sm py-8">Библиотека пока пуста.</p>
+                                        <div className="text-center py-12 text-slate-500 bg-slate-900/40 rounded-3xl border border-slate-800/50">
+                                            <p className="text-sm font-medium">Библиотека пока пуста.</p>
+                                        </div>
                                     ) : (
                                         books.map(b => (
-                                            <div key={b.firebaseId} className="p-3 rounded-2xl border border-slate-100 bg-white shadow-sm flex justify-between items-center">
+                                            <div key={b.firebaseId} className="p-4 rounded-3xl border border-slate-800/80 bg-slate-900 shadow-xl flex justify-between items-center transition hover:border-slate-700">
                                                 <div>
-                                                    <h3 className="font-semibold text-slate-800 text-sm">{b.title}</h3>
-                                                    <p className="text-xs text-slate-500">{b.author} • {b.holder}</p>
+                                                    <h3 className="font-bold text-slate-100 text-sm tracking-wide">{b.title}</h3>
+                                                    <p className="text-xs text-slate-400 mt-0.5">{b.author} • <span className="text-indigo-400 font-medium">У: {b.holder}</span></p>
                                                 </div>
                                                 <div className="flex gap-2">
                                                     <button 
                                                         onClick={() => openTelegramChat(b.holderUsername, b.holderTgId)}
-                                                        className="bg-sky-50 text-sky-600 text-xs px-3 py-1.5 rounded-xl font-medium">
+                                                        className="bg-sky-500/10 border border-sky-500/30 text-sky-400 text-xs px-3 py-2 rounded-xl font-bold hover:bg-sky-500/20 transition">
                                                         Взять
                                                     </button>
                                                     {canDelete(b.holderUsername, b.holderTgId) && (
                                                         <button 
                                                             onClick={() => removeBook(b.firebaseId)}
-                                                            className="bg-red-50 text-red-600 text-xs px-3 py-1.5 rounded-xl font-medium">
+                                                            className="bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs px-3 py-2 rounded-xl font-bold hover:bg-rose-500/20 transition">
                                                             Удалить
                                                         </button>
                                                     )}
@@ -366,46 +404,77 @@
                             </div>
                         )}
 
+                        {/* ВКЛАДКА: ЛЕНТА С ФОТО */}
                         {activeTab === 'hub' && (
-                            <div className="space-y-4">
-                                <h2 className="text-lg font-bold text-slate-800">Лента лицея</h2>
+                            <div className="space-y-4 animate-fadeIn">
+                                <h2 className="text-lg font-black tracking-tight text-white flex items-center gap-2 px-1">
+                                    <span className="w-2 h-2 rounded-full bg-pink-500"></span>
+                                    Лента Лицея
+                                </h2>
                                 {currentUser && (
-                                    <form onSubmit={addPost} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 space-y-2">
+                                    <form onSubmit={addPost} className="bg-slate-900/90 p-4 rounded-3xl border border-slate-800 shadow-xl space-y-3">
+                                        <p className="text-xs font-bold text-pink-400 uppercase tracking-wider">Создать публикацию</p>
                                         <textarea 
-                                            placeholder="Поделитесь новостью..." 
+                                            placeholder="Поделитесь новостью или событием..." 
                                             value={newPostText}
                                             onChange={(e) => setNewPostText(e.target.value)}
-                                            className="w-full text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white resize-none h-20"
+                                            className="w-full text-sm p-3 rounded-2xl bg-slate-950 border border-slate-800 focus:outline-none focus:border-pink-500 text-slate-100 placeholder-slate-500 resize-none h-20 transition"
                                         />
-                                        <button type="submit" className="w-full bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl shadow-sm hover:bg-blue-700 transition">
+                                        <input 
+                                            type="url" 
+                                            placeholder="Ссылка на фото к посту (необязательно, https://...)" 
+                                            value={newPostImage}
+                                            onChange={(e) => setNewPostImage(e.target.value)}
+                                            className="w-full text-sm p-3 rounded-2xl bg-slate-950 border border-slate-800 focus:outline-none focus:border-pink-500 text-slate-100 placeholder-slate-500 transition"
+                                        />
+                                        <button type="submit" className="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white text-sm font-bold py-3 rounded-2xl shadow-lg shadow-pink-600/30 transition">
                                             Опубликовать пост
                                         </button>
                                     </form>
                                 )}
                                 <div className="space-y-3">
                                     {posts.length === 0 ? (
-                                        <p className="text-center text-slate-400 text-sm py-8">Лента новостей пока пуста.</p>
+                                        <div className="text-center py-12 text-slate-500 bg-slate-900/40 rounded-3xl border border-slate-800/50">
+                                            <p className="text-sm font-medium">Лента новостей пока пуста.</p>
+                                        </div>
                                     ) : (
                                         posts.map(p => (
-                                            <div key={p.firebaseId} className="p-4 rounded-2xl border border-slate-100 bg-white shadow-sm space-y-2">
+                                            <div key={p.firebaseId} className="bg-slate-900/90 border border-slate-800/80 rounded-3xl p-4 shadow-xl space-y-3 transition hover:border-slate-700">
                                                 <div className="flex justify-between items-center">
-                                                    <span className="text-xs font-semibold text-slate-800">{p.author} ({p.classStr})</span>
-                                                    <div className="flex items-center gap-2">
-                                                        <button 
-                                                            onClick={() => openTelegramChat(p.authorUsername, p.authorTgId)}
-                                                            className="text-xs text-sky-600 hover:underline">
-                                                            Написать
-                                                        </button>
-                                                        {canDelete(p.authorUsername, p.authorTgId) && (
-                                                            <button 
-                                                                onClick={() => removePost(p.firebaseId)}
-                                                                className="text-xs text-red-500 hover:underline">
-                                                                Удалить
-                                                            </button>
-                                                        )}
+                                                    <div className="flex items-center space-x-2">
+                                                        <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-pink-500 to-indigo-600 text-white text-xs font-bold flex items-center justify-center shadow">
+                                                            {p.author.charAt(0)}
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-xs font-bold text-slate-200 block">{p.author}</span>
+                                                            <span className="text-[10px] text-indigo-400 font-semibold">{p.classStr}</span>
+                                                        </div>
                                                     </div>
+                                                    <span className="text-[10px] text-slate-500">{p.date}</span>
                                                 </div>
-                                                <p className="text-xs text-slate-600">{p.text}</p>
+
+                                                <p className="text-xs text-slate-200 leading-relaxed">{p.text}</p>
+
+                                                {p.imageUrl && (
+                                                    <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 max-h-64 shadow-inner">
+                                                        <img src={p.imageUrl} alt="Иллюстрация к посту" className="w-full h-full object-cover hover:scale-105 transition duration-500" />
+                                                    </div>
+                                                )}
+
+                                                <div className="flex justify-between items-center pt-2 border-t border-slate-800/80">
+                                                    <button 
+                                                        onClick={() => openTelegramChat(p.authorUsername, p.authorTgId)}
+                                                        className="text-xs text-sky-400 font-bold hover:underline flex items-center gap-1">
+                                                        ✈️ Написать автору
+                                                    </button>
+                                                    {canDelete(p.authorUsername, p.authorTgId) && (
+                                                        <button 
+                                                            onClick={() => removePost(p.firebaseId)}
+                                                            className="text-xs text-rose-400 font-bold hover:underline">
+                                                            Удалить
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
                                         ))
                                     )}
@@ -414,42 +483,43 @@
                         )}
                     </main>
 
+                    {/* Модальное окно авторизации */}
                     {showAuthModal && (
-                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                            <div className="bg-white rounded-3xl p-6 w-full max-w-xs space-y-4 shadow-xl">
-                                <h3 className="font-bold text-slate-900 text-center text-base">Профиль</h3>
+                        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+                            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-xs space-y-4 shadow-2xl">
+                                <h3 className="font-extrabold text-white text-center text-base">Авторизация</h3>
                                 <form onSubmit={handleLogin} className="space-y-3">
                                     <div>
-                                        <label className="text-xs text-slate-500 block mb-1">Имя</label>
+                                        <label className="text-xs text-slate-400 font-medium block mb-1">Имя и фамилия</label>
                                         <input 
                                             type="text" 
-                                            placeholder="Иван" 
+                                            placeholder="Иван Иванов" 
                                             value={authName}
                                             onChange={(e) => setAuthName(e.target.value)}
-                                            className="w-full text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white"
+                                            className="w-full text-sm p-3 rounded-2xl bg-slate-950 border border-slate-800 focus:outline-none focus:border-indigo-500 text-white"
                                             required
                                         />
                                     </div>
                                     <div>
-                                        <label className="text-xs text-slate-500 block mb-1">Telegram @username</label>
+                                        <label className="text-xs text-slate-400 font-medium block mb-1">Telegram @username</label>
                                         <input 
                                             type="text" 
                                             placeholder="username" 
                                             value={authUsername}
                                             onChange={(e) => setAuthUsername(e.target.value)}
-                                            className="w-full text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white"
+                                            className="w-full text-sm p-3 rounded-2xl bg-slate-950 border border-slate-800 focus:outline-none focus:border-indigo-500 text-white"
                                         />
                                     </div>
                                     <div className="pt-2 flex gap-2">
                                         <button 
                                             type="button" 
                                             onClick={() => setShowAuthModal(false)}
-                                            className="flex-1 bg-slate-100 text-slate-600 text-sm font-semibold py-2.5 rounded-xl">
+                                            className="flex-1 bg-slate-800 text-slate-300 text-xs font-bold py-3 rounded-2xl hover:bg-slate-700 transition">
                                             Отмена
                                         </button>
                                         <button 
                                             type="submit" 
-                                            className="flex-1 bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl">
+                                            className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-3 rounded-2xl shadow-lg shadow-indigo-600/30 transition">
                                             Сохранить
                                         </button>
                                     </div>
@@ -458,20 +528,21 @@
                         </div>
                     )}
 
-                    <nav className="absolute bottom-0 left-0 right-0 bg-white border-t border-slate-100 px-4 py-3 flex justify-around z-10">
+                    {/* Навигационная панель снизу (Плавающий Glassmorphism бар) */}
+                    <nav className="absolute bottom-3 left-4 right-4 bg-slate-900/90 backdrop-blur-xl border border-slate-800/90 px-3 py-2.5 rounded-3xl flex justify-around shadow-2xl z-20">
                         <button 
                             onClick={() => setActiveTab('lost-found')}
-                            className={`flex flex-col items-center text-xs font-medium ${activeTab === 'lost-found' ? 'text-blue-600 font-bold' : 'text-slate-400'}`}>
+                            className={`flex flex-col items-center text-xs font-bold transition transform active:scale-95 px-4 py-1.5 rounded-2xl ${activeTab === 'lost-found' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' : 'text-slate-400 hover:text-slate-200'}`}>
                             <span>Потеряшки</span>
                         </button>
                         <button 
                             onClick={() => setActiveTab('library')}
-                            className={`flex flex-col items-center text-xs font-medium ${activeTab === 'library' ? 'text-blue-600 font-bold' : 'text-slate-400'}`}>
+                            className={`flex flex-col items-center text-xs font-bold transition transform active:scale-95 px-4 py-1.5 rounded-2xl ${activeTab === 'library' ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30' : 'text-slate-400 hover:text-slate-200'}`}>
                             <span>Библиотека</span>
                         </button>
                         <button 
                             onClick={() => setActiveTab('hub')}
-                            className={`flex flex-col items-center text-xs font-medium ${activeTab === 'hub' ? 'text-blue-600 font-bold' : 'text-slate-400'}`}>
+                            className={`flex flex-col items-center text-xs font-bold transition transform active:scale-95 px-4 py-1.5 rounded-2xl ${activeTab === 'hub' ? 'bg-pink-600 text-white shadow-lg shadow-pink-600/30' : 'text-slate-400 hover:text-slate-200'}`}>
                             <span>Лента</span>
                         </button>
                     </nav>
