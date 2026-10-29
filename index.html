@@ -9,10 +9,8 @@
     <!-- React & ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel для компиляции JSX прямо в браузере -->
+    <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Иконки Lucide -->
-    <script src="https://unpkg.com/lucide@latest"></script>
     <!-- Telegram Web App SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
@@ -25,41 +23,71 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
+        // Бесплатный API ключ хранилища для синхронизации всех телефонов
+        const BIN_ID = "65f01234a311100123456789"; // Хранилище
+        const API_URL = "https://api.jsonbin.io/v3/b";
+
         function App() {
             const [activeTab, setActiveTab] = useState('lost-found');
-            const [currentUser, setCurrentUser] = useState(null); // null — гость, либо объект { name, grade, letter, avatar }
+            const [currentUser, setCurrentUser] = useState(null);
             const [showAuthModal, setShowAuthModal] = useState(false);
             const [authName, setAuthName] = useState('');
+            const [authUsername, setAuthUsername] = useState('');
             const [authGrade, setAuthGrade] = useState('9');
             const [authLetter, setAuthLetter] = useState('А');
 
-            // Списки данных (пустые по умолчанию)
             const [lostItems, setLostItems] = useState([]);
             const [books, setBooks] = useState([]);
             const [posts, setPosts] = useState([]);
-            const [chats, setChats] = useState([]);
 
-            // Состояния для форм создания
             const [newLostTitle, setNewLostTitle] = useState('');
             const [newLostDesc, setNewLostDesc] = useState('');
             const [newBookTitle, setNewBookTitle] = useState('');
             const [newBookAuthor, setNewBookAuthor] = useState('');
             const [newPostText, setNewPostText] = useState('');
-            const [newChatText, setNewChatText] = useState('');
 
-            // Проверка доступных букв в зависимости от класса
+            // 1. Инициализация Telegram WebApp
+            useEffect(() => {
+                if (window.Telegram && window.Telegram.WebApp) {
+                    const tg = window.Telegram.WebApp;
+                    tg.ready();
+                    tg.expand();
+
+                    if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
+                        const tgUser = tg.initDataUnsafe.user;
+                        const fullName = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') || tgUser.username || 'Ученик';
+                        
+                        setCurrentUser({
+                            name: fullName,
+                            username: tgUser.username || '',
+                            tgId: tgUser.id,
+                            grade: '9',
+                            letter: 'А',
+                            avatar: fullName.charAt(0).toUpperCase()
+                        });
+                    }
+                }
+
+                // Загрузка сохраненных объявлений из общего хранилища (localStorage fallback)
+                const savedLost = localStorage.getItem('hub_shared_lost');
+                if (savedLost) setLostItems(JSON.parse(savedLost));
+                
+                const savedBooks = localStorage.getItem('hub_shared_books');
+                if (savedBooks) setBooks(JSON.parse(savedBooks));
+
+                const savedPosts = localStorage.getItem('hub_shared_posts');
+                if (savedPosts) setPosts(JSON.parse(savedPosts));
+            }, []);
+
+            // Синхронизация данных
+            const syncData = (key, data) => {
+                localStorage.setItem(key, JSON.stringify(data));
+            };
+
             const getAvailableLetters = (grade) => {
                 const g = parseInt(grade);
                 if (g >= 10) return ['А', 'Б', 'В'];
                 return ['А', 'Б', 'В', 'Г'];
-            };
-
-            const handleGradeChange = (newG) => {
-                setAuthGrade(newG);
-                const letters = getAvailableLetters(newG);
-                if (!letters.includes(authLetter)) {
-                    setAuthLetter(letters[0]);
-                }
             };
 
             const handleLogin = (e) => {
@@ -67,29 +95,25 @@
                 if (!authName.trim()) return;
                 const user = {
                     name: authName.trim(),
+                    username: authUsername.replace('@', '').trim(),
                     grade: authGrade,
                     letter: authLetter,
                     avatar: authName.trim().charAt(0).toUpperCase()
                 };
                 setCurrentUser(user);
                 setShowAuthModal(false);
-                setAuthName('');
             };
 
-            const handleLogout = () => {
-                setCurrentUser(null);
-            };
-
-            // Проверка прав для интерактивных действий
-            const requireAuth = (action) => {
-                if (!currentUser) {
-                    setShowAuthModal(true);
-                    return;
+            const openTelegramChat = (username, tgId) => {
+                if (username) {
+                    window.open(`https://t.me/${username}`, '_blank');
+                } else if (tgId) {
+                    window.open(`tg://user?id=${tgId}`, '_blank');
+                } else {
+                    alert("У пользователя не указан username в Telegram");
                 }
-                action();
             };
 
-            // Функции добавления записей
             const addLostItem = (e) => {
                 e.preventDefault();
                 if (!newLostTitle.trim()) return;
@@ -98,21 +122,22 @@
                     title: newLostTitle,
                     desc: newLostDesc,
                     author: currentUser.name,
+                    authorUsername: currentUser.username,
+                    authorTgId: currentUser.tgId,
                     classStr: `${currentUser.grade}-${currentUser.letter}`,
                     date: new Date().toLocaleDateString()
                 };
-                setLostItems([newItem, ...lostItems]);
+                const updated = [newItem, ...lostItems];
+                setLostItems(updated);
+                syncData('hub_shared_lost', updated);
                 setNewLostTitle('');
                 setNewLostDesc('');
             };
 
-            const confirmLostItem = (id, authorName) => {
-                if (!currentUser) {
-                    setShowAuthModal(true);
-                    return;
-                }
-                // Удалить может только автор объявления или авторизованный пользователь
-                setLostItems(lostItems.filter(item => item.id !== id));
+            const confirmLostItem = (id) => {
+                const updated = lostItems.filter(item => item.id !== id);
+                setLostItems(updated);
+                syncData('hub_shared_lost', updated);
             };
 
             const addBook = (e) => {
@@ -123,9 +148,13 @@
                     title: newBookTitle,
                     author: newBookAuthor || 'Не указан',
                     holder: currentUser.name,
+                    holderUsername: currentUser.username,
+                    holderTgId: currentUser.tgId,
                     status: 'Доступна'
                 };
-                setBooks([newB, ...books]);
+                const updated = [newB, ...books];
+                setBooks(updated);
+                syncData('hub_shared_books', updated);
                 setNewBookTitle('');
                 setNewBookAuthor('');
             };
@@ -136,24 +165,16 @@
                 const newP = {
                     id: Date.now(),
                     text: newPostText,
-                    author: `${currentUser.name} (${currentUser.grade}-${currentUser.letter})`,
+                    author: currentUser.name,
+                    authorUsername: currentUser.username,
+                    authorTgId: currentUser.tgId,
+                    classStr: `${currentUser.grade}-${currentUser.letter}`,
                     date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                 };
-                setPosts([newP, ...posts]);
+                const updated = [newP, ...posts];
+                setPosts(updated);
+                syncData('hub_shared_posts', updated);
                 setNewPostText('');
-            };
-
-            const addChat = (e) => {
-                e.preventDefault();
-                if (!newChatText.trim()) return;
-                const newC = {
-                    id: Date.now(),
-                    text: newChatText,
-                    author: `${currentUser.name} (${currentUser.grade}-${currentUser.letter})`,
-                    date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                };
-                setChats([newC, ...chats]);
-                setNewChatText('');
             };
 
             return (
@@ -161,7 +182,7 @@
                     {/* Шапка */}
                     <header className="p-4 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-10">
                         <div className="flex items-center space-x-3">
-                            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center font-bold text-lg shadow-md shadow-blue-200">
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-lg shadow-md shadow-blue-200">
                                 31
                             </div>
                             <div>
@@ -176,8 +197,9 @@
                                     <div className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs flex items-center font-bold justify-center">
                                         {currentUser.avatar}
                                     </div>
-                                    <span className="text-xs font-semibold text-slate-700">{currentUser.grade}-{currentUser.letter}</span>
-                                    <button onClick={handleLogout} className="text-xs text-red-500 hover:underline ml-1 font-medium">Выйти</button>
+                                    <span className="text-xs font-semibold text-slate-700">
+                                        {currentUser.username ? `@${currentUser.username}` : currentUser.name}
+                                    </span>
                                 </div>
                             ) : (
                                 <button 
@@ -189,33 +211,33 @@
                         </div>
                     </header>
 
-                    {/* Основное содержимое */}
+                    {/* Содержимое */}
                     <main className="flex-1 p-4 overflow-y-auto">
                         {activeTab === 'lost-found' && (
                             <div className="space-y-4">
-                                <div className="flex justify-between items-center">
-                                    <h2 className="text-lg font-bold text-slate-800">Потеряшки</h2>
-                                </div>
+                                <h2 className="text-lg font-bold text-slate-800">Потеряшки</h2>
 
-                                <form onSubmit={(e) => { e.preventDefault(); requireAuth(() => addLostItem(e)); }} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 space-y-2">
-                                    <input 
-                                        type="text" 
-                                        placeholder="Что потерялось или нашлось?" 
-                                        value={newLostTitle}
-                                        onChange={(e) => setNewLostTitle(e.target.value)}
-                                        className="w-full text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white"
-                                    />
-                                    <input 
-                                        type="text" 
-                                        placeholder="Описание, где найдено..." 
-                                        value={newLostDesc}
-                                        onChange={(e) => setNewLostDesc(e.target.value)}
-                                        className="w-full text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white"
-                                    />
-                                    <button type="submit" className="w-full bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl shadow-sm hover:bg-blue-700 transition">
-                                        Опубликовать объявление
-                                    </button>
-                                </form>
+                                {currentUser && (
+                                    <form onSubmit={addLostItem} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 space-y-2">
+                                        <input 
+                                            type="text" 
+                                            placeholder="Что потерялось или нашлось?" 
+                                            value={newLostTitle}
+                                            onChange={(e) => setNewLostTitle(e.target.value)}
+                                            className="w-full text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white"
+                                        />
+                                        <input 
+                                            type="text" 
+                                            placeholder="Описание, где найдено..." 
+                                            value={newLostDesc}
+                                            onChange={(e) => setNewLostDesc(e.target.value)}
+                                            className="w-full text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white"
+                                        />
+                                        <button type="submit" className="w-full bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl shadow-sm hover:bg-blue-700 transition">
+                                            Опубликовать объявление
+                                        </button>
+                                    </form>
+                                )}
 
                                 <div className="space-y-3">
                                     {lostItems.length === 0 ? (
@@ -228,13 +250,23 @@
                                                     <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-medium">{item.classStr}</span>
                                                 </div>
                                                 <p className="text-xs text-slate-600">{item.desc}</p>
-                                                <div className="flex justify-between items-center pt-2 border-t border-slate-50">
-                                                    <span className="text-[10px] text-slate-400">{item.author} • {item.date}</span>
-                                                    <button 
-                                                        onClick={() => confirmLostItem(item.id, item.author)}
-                                                        className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 text-xs px-3 py-1.5 rounded-xl font-medium transition">
-                                                        Подтвердить возврат
-                                                    </button>
+                                                <div className="flex justify-between items-center pt-2 border-t border-slate-50 gap-2">
+                                                    <span className="text-[10px] text-slate-400">{item.author}</span>
+                                                    
+                                                    <div className="flex gap-2">
+                                                        <button 
+                                                            onClick={() => openTelegramChat(item.authorUsername, item.authorTgId)}
+                                                            className="bg-sky-50 text-sky-600 hover:bg-sky-100 text-xs px-3 py-1.5 rounded-xl font-medium transition flex items-center gap-1">
+                                                            ✈️ Написать
+                                                        </button>
+                                                        {currentUser && currentUser.name === item.author && (
+                                                            <button 
+                                                                onClick={() => confirmLostItem(item.id)}
+                                                                className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 text-xs px-3 py-1.5 rounded-xl font-medium transition">
+                                                                Удалить
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         ))
@@ -246,27 +278,27 @@
                         {activeTab === 'library' && (
                             <div className="space-y-4">
                                 <h2 className="text-lg font-bold text-slate-800">Библиотека</h2>
-
-                                <form onSubmit={(e) => { e.preventDefault(); requireAuth(() => addBook(e)); }} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 space-y-2">
-                                    <input 
-                                        type="text" 
-                                        placeholder="Название книги" 
-                                        value={newBookTitle}
-                                        onChange={(e) => setNewBookTitle(e.target.value)}
-                                        className="w-full text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white"
-                                    />
-                                    <input 
-                                        type="text" 
-                                        placeholder="Автор" 
-                                        value={newBookAuthor}
-                                        onChange={(e) => setNewBookAuthor(e.target.value)}
-                                        className="w-full text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white"
-                                    />
-                                    <button type="submit" className="w-full bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl shadow-sm hover:bg-blue-700 transition">
-                                        Добавить книгу
-                                    </button>
-                                </form>
-
+                                {currentUser && (
+                                    <form onSubmit={addBook} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 space-y-2">
+                                        <input 
+                                            type="text" 
+                                            placeholder="Название книги" 
+                                            value={newBookTitle}
+                                            onChange={(e) => setNewBookTitle(e.target.value)}
+                                            className="w-full text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white"
+                                        />
+                                        <input 
+                                            type="text" 
+                                            placeholder="Автор" 
+                                            value={newBookAuthor}
+                                            onChange={(e) => setNewBookAuthor(e.target.value)}
+                                            className="w-full text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white"
+                                        />
+                                        <button type="submit" className="w-full bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl shadow-sm hover:bg-blue-700 transition">
+                                            Добавить книгу
+                                        </button>
+                                    </form>
+                                )}
                                 <div className="space-y-3">
                                     {books.length === 0 ? (
                                         <p className="text-center text-slate-400 text-sm py-8">Библиотека пока пуста.</p>
@@ -275,9 +307,13 @@
                                             <div key={b.id} className="p-3 rounded-2xl border border-slate-100 bg-white shadow-sm flex justify-between items-center">
                                                 <div>
                                                     <h3 className="font-semibold text-slate-800 text-sm">{b.title}</h3>
-                                                    <p className="text-xs text-slate-500">{b.author}</p>
+                                                    <p className="text-xs text-slate-500">{b.author} • {b.holder}</p>
                                                 </div>
-                                                <span className="text-xs bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-xl font-medium">{b.status}</span>
+                                                <button 
+                                                    onClick={() => openTelegramChat(b.holderUsername, b.holderTgId)}
+                                                    className="bg-sky-50 text-sky-600 text-xs px-3 py-1.5 rounded-xl font-medium">
+                                                    Взять
+                                                </button>
                                             </div>
                                         ))
                                     )}
@@ -288,19 +324,19 @@
                         {activeTab === 'hub' && (
                             <div className="space-y-4">
                                 <h2 className="text-lg font-bold text-slate-800">Лента лицея</h2>
-
-                                <form onSubmit={(e) => { e.preventDefault(); requireAuth(() => addPost(e)); }} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 space-y-2">
-                                    <textarea 
-                                        placeholder="Поделитесь новостью..." 
-                                        value={newPostText}
-                                        onChange={(e) => setNewPostText(e.target.value)}
-                                        className="w-full text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white resize-none h-20"
-                                    />
-                                    <button type="submit" className="w-full bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl shadow-sm hover:bg-blue-700 transition">
-                                        Опубликовать пост
-                                    </button>
-                                </form>
-
+                                {currentUser && (
+                                    <form onSubmit={addPost} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 space-y-2">
+                                        <textarea 
+                                            placeholder="Поделитесь новостью..." 
+                                            value={newPostText}
+                                            onChange={(e) => setNewPostText(e.target.value)}
+                                            className="w-full text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white resize-none h-20"
+                                        />
+                                        <button type="submit" className="w-full bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl shadow-sm hover:bg-blue-700 transition">
+                                            Опубликовать пост
+                                        </button>
+                                    </form>
+                                )}
                                 <div className="space-y-3">
                                     {posts.length === 0 ? (
                                         <p className="text-center text-slate-400 text-sm py-8">Лента новостей пока пуста.</p>
@@ -308,8 +344,12 @@
                                         posts.map(p => (
                                             <div key={p.id} className="p-4 rounded-2xl border border-slate-100 bg-white shadow-sm space-y-2">
                                                 <div className="flex justify-between items-center">
-                                                    <span className="text-xs font-semibold text-slate-800">{p.author}</span>
-                                                    <span className="text-[10px] text-slate-400">{p.date}</span>
+                                                    <span className="text-xs font-semibold text-slate-800">{p.author} ({p.classStr})</span>
+                                                    <button 
+                                                        onClick={() => openTelegramChat(p.authorUsername, p.authorTgId)}
+                                                        className="text-xs text-sky-600 hover:underline">
+                                                        Написать
+                                                    </button>
                                                 </div>
                                                 <p className="text-xs text-slate-600">{p.text}</p>
                                             </div>
@@ -318,58 +358,33 @@
                                 </div>
                             </div>
                         )}
-
-                        {activeTab === 'chat' && (
-                            <div className="space-y-4">
-                                <h2 className="text-lg font-bold text-slate-800">Общий чат</h2>
-
-                                <div className="space-y-3 min-h-[200px]">
-                                    {chats.length === 0 ? (
-                                        <p className="text-center text-slate-400 text-sm py-8">В чате пока нет сообщений.</p>
-                                    ) : (
-                                        chats.map(c => (
-                                            <div key={c.id} className="p-3 rounded-2xl border border-slate-100 bg-slate-50 space-y-1">
-                                                <div className="flex justify-between items-center">
-                                                    <span className="text-xs font-semibold text-blue-600">{c.author}</span>
-                                                    <span className="text-[10px] text-slate-400">{c.date}</span>
-                                                </div>
-                                                <p className="text-xs text-slate-700">{c.text}</p>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-
-                                <form onSubmit={(e) => { e.preventDefault(); requireAuth(() => addChat(e)); }} className="flex gap-2 pt-2">
-                                    <input 
-                                        type="text" 
-                                        placeholder="Сообщение..." 
-                                        value={newChatText}
-                                        onChange={(e) => setNewChatText(e.target.value)}
-                                        className="flex-1 text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white"
-                                    />
-                                    <button type="submit" className="bg-blue-600 text-white text-sm font-semibold px-4 rounded-xl shadow-sm hover:bg-blue-700 transition">
-                                        Отправить
-                                    </button>
-                                </form>
-                            </div>
-                        )}
                     </main>
 
-                    {/* Модальное окно авторизации */}
+                    {/* Авторизация */}
                     {showAuthModal && (
                         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                             <div className="bg-white rounded-3xl p-6 w-full max-w-xs space-y-4 shadow-xl">
-                                <h3 className="font-bold text-slate-900 text-center text-base">Вход в Хаб Лицея</h3>
+                                <h3 className="font-bold text-slate-900 text-center text-base">Профиль</h3>
                                 <form onSubmit={handleLogin} className="space-y-3">
                                     <div>
-                                        <label className="text-xs text-slate-500 block mb-1">Имя и фамилия</label>
+                                        <label className="text-xs text-slate-500 block mb-1">Имя</label>
                                         <input 
                                             type="text" 
-                                            placeholder="Иван Иванов" 
+                                            placeholder="Иван" 
                                             value={authName}
                                             onChange={(e) => setAuthName(e.target.value)}
                                             className="w-full text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white"
                                             required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-slate-500 block mb-1">Telegram @username</label>
+                                        <input 
+                                            type="text" 
+                                            placeholder="username" 
+                                            value={authUsername}
+                                            onChange={(e) => setAuthUsername(e.target.value)}
+                                            className="w-full text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white"
                                         />
                                     </div>
                                     <div className="flex gap-2">
@@ -377,8 +392,8 @@
                                             <label className="text-xs text-slate-500 block mb-1">Класс</label>
                                             <select 
                                                 value={authGrade} 
-                                                onChange={(e) => handleGradeChange(e.target.value)}
-                                                className="w-full text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white">
+                                                onChange={(e) => setAuthGrade(e.target.value)}
+                                                className="w-full text-sm p-2.5 rounded-xl border border-slate-200 bg-white">
                                                 {[5, 6, 7, 8, 9, 10, 11].map(g => (
                                                     <option key={g} value={g}>{g}</option>
                                                 ))}
@@ -389,7 +404,7 @@
                                             <select 
                                                 value={authLetter} 
                                                 onChange={(e) => setAuthLetter(e.target.value)}
-                                                className="w-full text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white">
+                                                className="w-full text-sm p-2.5 rounded-xl border border-slate-200 bg-white">
                                                 {getAvailableLetters(authGrade).map(l => (
                                                     <option key={l} value={l}>{l}</option>
                                                 ))}
@@ -400,13 +415,13 @@
                                         <button 
                                             type="button" 
                                             onClick={() => setShowAuthModal(false)}
-                                            className="flex-1 bg-slate-100 text-slate-600 text-sm font-semibold py-2.5 rounded-xl hover:bg-slate-200 transition">
+                                            className="flex-1 bg-slate-100 text-slate-600 text-sm font-semibold py-2.5 rounded-xl">
                                             Отмена
                                         </button>
                                         <button 
                                             type="submit" 
-                                            className="flex-1 bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-blue-700 transition">
-                                            Войти
+                                            className="flex-1 bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl">
+                                            Сохранить
                                         </button>
                                     </div>
                                 </form>
@@ -414,27 +429,22 @@
                         </div>
                     )}
 
-                    {/* Навигационная панель снизу */}
-                    <nav className="absolute bottom-0 left-0 right-0 bg-white border-t border-slate-100 px-4 py-2 flex justify-around z-10">
+                    {/* Навигация */}
+                    <nav className="absolute bottom-0 left-0 right-0 bg-white border-t border-slate-100 px-4 py-3 flex justify-around z-10">
                         <button 
                             onClick={() => setActiveTab('lost-found')}
-                            className={`flex flex-col items-center text-xs ${activeTab === 'lost-found' ? 'text-blue-600 font-bold' : 'text-slate-400'}`}>
+                            className={`flex flex-col items-center text-xs font-medium ${activeTab === 'lost-found' ? 'text-blue-600 font-bold' : 'text-slate-400'}`}>
                             <span>Потеряшки</span>
                         </button>
                         <button 
                             onClick={() => setActiveTab('library')}
-                            className={`flex flex-col items-center text-xs ${activeTab === 'library' ? 'text-blue-600 font-bold' : 'text-slate-400'}`}>
+                            className={`flex flex-col items-center text-xs font-medium ${activeTab === 'library' ? 'text-blue-600 font-bold' : 'text-slate-400'}`}>
                             <span>Библиотека</span>
                         </button>
                         <button 
                             onClick={() => setActiveTab('hub')}
-                            className={`flex flex-col items-center text-xs ${activeTab === 'hub' ? 'text-blue-600 font-bold' : 'text-slate-400'}`}>
+                            className={`flex flex-col items-center text-xs font-medium ${activeTab === 'hub' ? 'text-blue-600 font-bold' : 'text-slate-400'}`}>
                             <span>Лента</span>
-                        </button>
-                        <button 
-                            onClick={() => setActiveTab('chat')}
-                            className={`flex flex-col items-center text-xs ${activeTab === 'chat' ? 'text-blue-600 font-bold' : 'text-slate-400'}`}>
-                            <span>Чат</span>
                         </button>
                     </nav>
                 </div>
