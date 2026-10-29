@@ -135,7 +135,6 @@
                         let width = img.width;
                         let height = img.height;
 
-                        // Если картинка большая, пропорционально уменьшаем до лимита в 1000px
                         const MAX_SIZE = 1000;
                         if (width > MAX_SIZE || height > MAX_SIZE) {
                             if (width > height) {
@@ -152,11 +151,9 @@
                         const ctx = canvas.getContext('2d');
                         ctx.drawImage(img, 0, 0, width, height);
 
-                        // Подбираем качество сжатия, чтобы размер стал гарантированно меньше 1.5 МБ
                         let quality = 0.8;
                         let dataUrl = canvas.toDataURL('image/jpeg', quality);
 
-                        // Если полученный Base64 всё еще больше ~1.5MB, сжимаем сильнее
                         while (dataUrl.length > 1.5 * 1024 * 1024 && quality > 0.2) {
                             quality -= 0.1;
                             dataUrl = canvas.toDataURL('image/jpeg', quality);
@@ -340,9 +337,10 @@
                                     ) : (
                                         lostItems.map(item => (
                                             <div key={item.firebaseId} className="bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-sm space-y-2">
+                                                {/* Изображение отображается полностью без обрезки */}
                                                 {item.imageUrl && (
-                                                    <div className="overflow-hidden rounded-xl border border-slate-100 bg-slate-50 max-h-48">
-                                                        <img src={item.imageUrl} alt="Фото" className="w-full h-full object-cover" />
+                                                    <div className="w-full bg-slate-900 rounded-xl overflow-hidden flex items-center justify-center">
+                                                        <img src={item.imageUrl} alt="Фото" className="w-full h-auto object-contain max-h-[350px]" />
                                                     </div>
                                                 )}
                                                 <div className="flex justify-between items-start">
@@ -477,9 +475,10 @@
 
                                                 <p className="text-xs text-slate-700 leading-relaxed">{p.text}</p>
 
+                                                {/* Изображение отображается полностью без обрезки */}
                                                 {p.imageUrl && (
-                                                    <div className="overflow-hidden rounded-xl border border-slate-100 bg-slate-50 max-h-52">
-                                                        <img src={p.imageUrl} alt="Фото поста" className="w-full h-full object-cover" />
+                                                    <div className="w-full bg-slate-900 rounded-xl overflow-hidden flex items-center justify-center">
+                                                        <img src={p.imageUrl} alt="Фото поста" className="w-full h-auto object-contain max-h-[350px]" />
                                                     </div>
                                                 )}
 
@@ -564,7 +563,7 @@
                         </button>
                         <button 
                             onClick={() => setActiveTab('hub')}
-                            className={`flex flex-col items-center text-xs font-semibold transition px-4 py-1 rounded-xl ${activeTab ===5 === activeTab ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:text-slate-600'}`}>
+                            className={`flex flex-col items-center text-xs font-semibold transition px-4 py-1 rounded-xl ${activeTab === 'hub' ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:text-slate-600'}`}>
                             <span>Лента</span>
                         </button>
                     </nav>
