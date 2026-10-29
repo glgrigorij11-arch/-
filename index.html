@@ -9,26 +9,22 @@
     <!-- React & ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel для JSX -->
+    <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Иконки Lucide -->
-    <script src="https://unpkg.com/lucide@latest"></script>
     <!-- Telegram Web App SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-
     <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-        /* Плавные анимации и кастомный скроллбар */
-        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar { width: 3px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 3px; }
     </style>
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen flex justify-center items-center">
-    <div id="root" class="w-full max-w-md h-screen sm:h-[850px] sm:rounded-3xl sm:shadow-2xl overflow-hidden flex flex-col bg-slate-900 border border-slate-800 relative"></div>
+<body class="bg-slate-100 text-slate-800 min-h-screen flex justify-center items-center">
+    <div id="root" class="w-full max-w-md h-screen sm:h-[850px] sm:rounded-3xl sm:shadow-xl overflow-hidden flex flex-col bg-white border border-slate-200/60 relative"></div>
 
     <script type="text/babel">
         // Твоя конфигурация Firebase
@@ -49,7 +45,7 @@
         const db = firebase.database();
 
         // ⚠️ Впиши сюда свой Telegram username для прав админа
-        const ADMIN_USERNAME = "destroyyx"; 
+        const ADMIN_USERNAME = "destroyyyx"; 
 
         const { useState, useEffect } = React;
 
@@ -66,7 +62,7 @@
             const [books, setBooks] = useState([]);
             const [posts, setPosts] = useState([]);
 
-            // Состояния полей ввода с поддержкой изображений
+            // Состояния полей ввода
             const [newLostTitle, setNewLostTitle] = useState('');
             const [newLostDesc, setNewLostDesc] = useState('');
             const [newLostImage, setNewLostImage] = useState('');
@@ -127,6 +123,21 @@
                 });
             }, []);
 
+            // Универсальная функция загрузки фото с телефона или камеры
+            const handleImageUpload = (e, setImageCallback) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                if (file.size > 1048576) {
+                    alert("Файл слишком большой. Выберите фото размером до 1 МБ.");
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    setImageCallback(reader.result);
+                };
+                reader.readAsDataURL(file);
+            };
+
             const openTelegramChat = (username, tgId) => {
                 if (username) {
                     window.open(`https://t.me/${username}`, '_blank');
@@ -158,7 +169,6 @@
                 return isAdmin || isAuthor;
             };
 
-            // Добавление потеряшки с фото
             const addLostItem = (e) => {
                 e.preventDefault();
                 if (!newLostTitle.trim() || !currentUser) return;
@@ -166,7 +176,7 @@
                 db.ref('lost_items').push({
                     title: newLostTitle,
                     desc: newLostDesc,
-                    imageUrl: newLostImage.trim(),
+                    imageUrl: newLostImage,
                     author: currentUser.name,
                     authorUsername: currentUser.username,
                     authorTgId: currentUser.tgId,
@@ -200,14 +210,13 @@
 
             const removeBook = (firebaseId) => db.ref(`books/${firebaseId}`).remove();
 
-            // Добавление поста с фото
             const addPost = (e) => {
                 e.preventDefault();
                 if (!newPostText.trim() || !currentUser) return;
 
                 db.ref('posts').push({
                     text: newPostText,
-                    imageUrl: newPostImage.trim(),
+                    imageUrl: newPostImage,
                     author: currentUser.name,
                     authorUsername: currentUser.username,
                     authorTgId: currentUser.tgId,
@@ -222,36 +231,34 @@
             const removePost = (firebaseId) => db.ref(`posts/${firebaseId}`).remove();
 
             return (
-                <div className="flex flex-col h-full bg-slate-950 text-slate-100 relative overflow-hidden">
+                <div className="flex flex-col h-full bg-slate-50 text-slate-800 relative overflow-hidden">
                     
-                    {/* Верхняя неоновая панель / Шапка */}
-                    <header className="px-5 py-4 border-b border-slate-800/80 bg-slate-900/80 backdrop-blur-md flex items-center justify-between z-20">
-                        <div className="flex items-center space-x-3">
-                            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 p-0.5 shadow-lg shadow-indigo-500/20">
-                                <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center font-black text-white text-base">
-                                    31
-                                </div>
+                    {/* Минималистичная светлая шапка */}
+                    <header className="px-4 py-3 bg-white/80 backdrop-blur-md border-b border-slate-200/80 flex items-center justify-between sticky top-0 z-20">
+                        <div className="flex items-center space-x-2.5">
+                            <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-sm">
+                                31
                             </div>
                             <div>
-                                <h1 className="font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-400 text-base leading-tight tracking-wide">Лицей 31</h1>
-                                <p className="text-[11px] font-medium text-indigo-400">Школьный Цифровой Хаб</p>
+                                <h1 className="font-bold text-slate-900 text-sm leading-tight">Лицей 31</h1>
+                                <p className="text-[10px] text-slate-400 font-medium">Школьный хаб</p>
                             </div>
                         </div>
 
                         <div>
                             {currentUser ? (
-                                <div className="flex items-center space-x-2 bg-slate-800/90 border border-slate-700/60 px-3 py-1.5 rounded-2xl shadow-inner">
-                                    <div className="w-6 h-6 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 text-white text-xs flex items-center font-bold justify-center shadow">
+                                <div className="flex items-center space-x-2 bg-slate-100 px-2.5 py-1 rounded-full border border-slate-200/60">
+                                    <div className="w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] flex items-center font-bold justify-center">
                                         {currentUser.avatar}
                                     </div>
-                                    <span className="text-xs font-semibold text-slate-200">
+                                    <span className="text-xs font-medium text-slate-700">
                                         {currentUser.username ? `@${currentUser.username}` : currentUser.name}
                                     </span>
                                 </div>
                             ) : (
                                 <button 
                                     onClick={() => setShowAuthModal(true)}
-                                    className="bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-lg shadow-indigo-600/30 transition transform active:scale-95">
+                                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3.5 py-1.5 rounded-xl shadow-sm transition">
                                     Войти
                                 </button>
                             )}
@@ -261,75 +268,70 @@
                     {/* Основной контент */}
                     <main className="flex-1 p-4 overflow-y-auto space-y-4 pb-24">
                         
-                        {/* ВКЛАДКА: ПОТЕРЯШКИ */}
+                        {/* ПОТЕРЯШКИ */}
                         {activeTab === 'lost-found' && (
-                            <div className="space-y-4 animate-fadeIn">
-                                <div className="flex justify-between items-center px-1">
-                                    <h2 className="text-lg font-black tracking-tight text-white flex items-center gap-2">
-                                        <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
-                                        Бюро Потеряшек
-                                    </h2>
-                                </div>
+                            <div className="space-y-3">
+                                <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider px-1">Бюро Потеряшек</h2>
 
                                 {currentUser && (
-                                    <form onSubmit={addLostItem} className="bg-slate-900/90 backdrop-blur p-4 rounded-3xl border border-slate-800 shadow-xl space-y-3">
-                                        <p className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Новое объявление</p>
+                                    <form onSubmit={addLostItem} className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-2.5">
                                         <input 
                                             type="text" 
                                             placeholder="Что потерялось или нашлось?" 
                                             value={newLostTitle}
                                             onChange={(e) => setNewLostTitle(e.target.value)}
-                                            className="w-full text-sm p-3 rounded-2xl bg-slate-950 border border-slate-800 focus:outline-none focus:border-indigo-500 text-slate-100 placeholder-slate-500 transition"
+                                            className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500 text-slate-800 placeholder-slate-400"
                                         />
                                         <textarea 
                                             placeholder="Описание, где оставлено..." 
                                             value={newLostDesc}
                                             onChange={(e) => setNewLostDesc(e.target.value)}
-                                            className="w-full text-sm p-3 rounded-2xl bg-slate-950 border border-slate-800 focus:outline-none focus:border-indigo-500 text-slate-100 placeholder-slate-500 resize-none h-20 transition"
+                                            className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500 text-slate-800 placeholder-slate-400 resize-none h-16"
                                         />
-                                        <input 
-                                            type="url" 
-                                            placeholder="Ссылка на фото (необязательно, https://...)" 
-                                            value={newLostImage}
-                                            onChange={(e) => setNewLostImage(e.target.value)}
-                                            className="w-full text-sm p-3 rounded-2xl bg-slate-950 border border-slate-800 focus:outline-none focus:border-indigo-500 text-slate-100 placeholder-slate-500 transition"
-                                        />
-                                        <button type="submit" className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-sm font-bold py-3 rounded-2xl shadow-lg shadow-indigo-600/30 transition transform active:scale-95">
-                                            Опубликовать вещь
+                                        
+                                        {/* Загрузка фото */}
+                                        <div className="flex items-center gap-2 pt-1">
+                                            <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-3 py-2 rounded-xl font-medium border border-slate-200 transition flex items-center gap-1.5">
+                                                📷 Прикрепить фото
+                                                <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setNewLostImage)} className="hidden" />
+                                            </label>
+                                            {newLostImage && <span className="text-[11px] text-emerald-600 font-medium">✓ Фото загружено</span>}
+                                        </div>
+
+                                        <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-2.5 rounded-xl shadow-sm transition">
+                                            Опубликовать
                                         </button>
                                     </form>
                                 )}
 
-                                <div className="space-y-3">
+                                <div className="space-y-2.5">
                                     {lostItems.length === 0 ? (
-                                        <div className="text-center py-12 text-slate-500 bg-slate-900/40 rounded-3xl border border-slate-800/50">
-                                            <p className="text-sm font-medium">Пока нет объявлений о потерянных вещах.</p>
-                                        </div>
+                                        <div className="text-center py-10 text-slate-400 text-xs">Нет объявлений о потерянных вещах.</div>
                                     ) : (
                                         lostItems.map(item => (
-                                            <div key={item.firebaseId} className="bg-slate-900/90 border border-slate-800/80 rounded-3xl p-4 shadow-xl space-y-3 transition hover:border-slate-700">
+                                            <div key={item.firebaseId} className="bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-sm space-y-2">
                                                 {item.imageUrl && (
-                                                    <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 max-h-56">
-                                                        <img src={item.imageUrl} alt="Фото находки" className="w-full h-full object-cover hover:scale-105 transition duration-500" />
+                                                    <div className="overflow-hidden rounded-xl border border-slate-100 bg-slate-50 max-h-48">
+                                                        <img src={item.imageUrl} alt="Фото" className="w-full h-full object-cover" />
                                                     </div>
                                                 )}
                                                 <div className="flex justify-between items-start">
-                                                    <h3 className="font-bold text-slate-100 text-sm tracking-wide">{item.title}</h3>
-                                                    <span className="text-[10px] bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 px-2.5 py-1 rounded-full font-bold">{item.classStr}</span>
+                                                    <h3 className="font-semibold text-slate-900 text-xs">{item.title}</h3>
+                                                    <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-semibold">{item.classStr}</span>
                                                 </div>
-                                                {item.desc && <p className="text-xs text-slate-300 leading-relaxed">{item.desc}</p>}
-                                                <div className="flex justify-between items-center pt-2 border-t border-slate-800/80 gap-2">
-                                                    <span className="text-[10px] text-slate-500 font-medium">{item.author} • {item.date}</span>
-                                                    <div className="flex gap-2">
+                                                {item.desc && <p className="text-xs text-slate-600">{item.desc}</p>}
+                                                <div className="flex justify-between items-center pt-2 border-t border-slate-100">
+                                                    <span className="text-[10px] text-slate-400">{item.author}</span>
+                                                    <div className="flex gap-1.5">
                                                         <button 
                                                             onClick={() => openTelegramChat(item.authorUsername, item.authorTgId)}
-                                                            className="bg-sky-500/10 border border-sky-500/30 text-sky-400 hover:bg-sky-500/20 text-xs px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1">
-                                                            ✈️ Написать
+                                                            className="bg-sky-50 text-sky-600 hover:bg-sky-100 text-[11px] px-2.5 py-1 rounded-lg font-medium transition">
+                                                            Написать
                                                         </button>
                                                         {canDelete(item.authorUsername, item.authorTgId) && (
                                                             <button 
                                                                 onClick={() => removeLostItem(item.firebaseId)}
-                                                                className="bg-rose-500/10 border border-rose-500/30 text-rose-400 hover:bg-rose-500/20 text-xs px-3 py-1.5 rounded-xl font-bold transition">
+                                                                className="bg-rose-50 text-rose-600 hover:bg-rose-100 text-[11px] px-2.5 py-1 rounded-lg font-medium transition">
                                                                 Удалить
                                                             </button>
                                                         )}
@@ -342,57 +344,51 @@
                             </div>
                         )}
 
-                        {/* ВКЛАДКА: БИБЛИОТЕКА */}
+                        {/* БИБЛИОТЕКА */}
                         {activeTab === 'library' && (
-                            <div className="space-y-4 animate-fadeIn">
-                                <h2 className="text-lg font-black tracking-tight text-white flex items-center gap-2 px-1">
-                                    <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                                    Лицейская Библиотека
-                                </h2>
+                            <div className="space-y-3">
+                                <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider px-1">Библиотека</h2>
                                 {currentUser && (
-                                    <form onSubmit={addBook} className="bg-slate-900/90 p-4 rounded-3xl border border-slate-800 shadow-xl space-y-3">
-                                        <p className="text-xs font-bold text-purple-400 uppercase tracking-wider">Добавить книгу</p>
+                                    <form onSubmit={addBook} className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-2.5">
                                         <input 
                                             type="text" 
                                             placeholder="Название книги" 
                                             value={newBookTitle}
                                             onChange={(e) => setNewBookTitle(e.target.value)}
-                                            className="w-full text-sm p-3 rounded-2xl bg-slate-950 border border-slate-800 focus:outline-none focus:border-purple-500 text-slate-100 placeholder-slate-500 transition"
+                                            className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500 text-slate-800 placeholder-slate-400"
                                         />
                                         <input 
                                             type="text" 
                                             placeholder="Автор" 
                                             value={newBookAuthor}
                                             onChange={(e) => setNewBookAuthor(e.target.value)}
-                                            className="w-full text-sm p-3 rounded-2xl bg-slate-950 border border-slate-800 focus:outline-none focus:border-purple-500 text-slate-100 placeholder-slate-500 transition"
+                                            className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500 text-slate-800 placeholder-slate-400"
                                         />
-                                        <button type="submit" className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-sm font-bold py-3 rounded-2xl shadow-lg shadow-purple-600/30 transition">
-                                            Поделиться книгой
+                                        <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-2.5 rounded-xl shadow-sm transition">
+                                            Добавить книгу
                                         </button>
                                     </form>
                                 )}
-                                <div className="space-y-3">
+                                <div className="space-y-2.5">
                                     {books.length === 0 ? (
-                                        <div className="text-center py-12 text-slate-500 bg-slate-900/40 rounded-3xl border border-slate-800/50">
-                                            <p className="text-sm font-medium">Библиотека пока пуста.</p>
-                                        </div>
+                                        <div className="text-center py-10 text-slate-400 text-xs">Библиотека пока пуста.</div>
                                     ) : (
                                         books.map(b => (
-                                            <div key={b.firebaseId} className="p-4 rounded-3xl border border-slate-800/80 bg-slate-900 shadow-xl flex justify-between items-center transition hover:border-slate-700">
+                                            <div key={b.firebaseId} className="p-3.5 rounded-2xl border border-slate-200/80 bg-white shadow-sm flex justify-between items-center">
                                                 <div>
-                                                    <h3 className="font-bold text-slate-100 text-sm tracking-wide">{b.title}</h3>
-                                                    <p className="text-xs text-slate-400 mt-0.5">{b.author} • <span className="text-indigo-400 font-medium">У: {b.holder}</span></p>
+                                                    <h3 className="font-semibold text-slate-900 text-xs">{b.title}</h3>
+                                                    <p className="text-[11px] text-slate-500 mt-0.5">{b.author} • <span className="text-blue-600 font-medium">У: {b.holder}</span></p>
                                                 </div>
-                                                <div className="flex gap-2">
+                                                <div className="flex gap-1.5">
                                                     <button 
                                                         onClick={() => openTelegramChat(b.holderUsername, b.holderTgId)}
-                                                        className="bg-sky-500/10 border border-sky-500/30 text-sky-400 text-xs px-3 py-2 rounded-xl font-bold hover:bg-sky-500/20 transition">
+                                                        className="bg-sky-50 text-sky-600 text-[11px] px-2.5 py-1.5 rounded-lg font-medium">
                                                         Взять
                                                     </button>
                                                     {canDelete(b.holderUsername, b.holderTgId) && (
                                                         <button 
                                                             onClick={() => removeBook(b.firebaseId)}
-                                                            className="bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs px-3 py-2 rounded-xl font-bold hover:bg-rose-500/20 transition">
+                                                            className="bg-rose-50 text-rose-600 text-[11px] px-2.5 py-1.5 rounded-lg font-medium">
                                                             Удалить
                                                         </button>
                                                     )}
@@ -404,73 +400,70 @@
                             </div>
                         )}
 
-                        {/* ВКЛАДКА: ЛЕНТА С ФОТО */}
+                        {/* ЛЕНТА */}
                         {activeTab === 'hub' && (
-                            <div className="space-y-4 animate-fadeIn">
-                                <h2 className="text-lg font-black tracking-tight text-white flex items-center gap-2 px-1">
-                                    <span className="w-2 h-2 rounded-full bg-pink-500"></span>
-                                    Лента Лицея
-                                </h2>
+                            <div className="space-y-3">
+                                <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider px-1">Лента Лицея</h2>
                                 {currentUser && (
-                                    <form onSubmit={addPost} className="bg-slate-900/90 p-4 rounded-3xl border border-slate-800 shadow-xl space-y-3">
-                                        <p className="text-xs font-bold text-pink-400 uppercase tracking-wider">Создать публикацию</p>
+                                    <form onSubmit={addPost} className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-2.5">
                                         <textarea 
-                                            placeholder="Поделитесь новостью или событием..." 
+                                            placeholder="Поделитесь новостью..." 
                                             value={newPostText}
                                             onChange={(e) => setNewPostText(e.target.value)}
-                                            className="w-full text-sm p-3 rounded-2xl bg-slate-950 border border-slate-800 focus:outline-none focus:border-pink-500 text-slate-100 placeholder-slate-500 resize-none h-20 transition"
+                                            className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500 text-slate-800 placeholder-slate-400 resize-none h-16"
                                         />
-                                        <input 
-                                            type="url" 
-                                            placeholder="Ссылка на фото к посту (необязательно, https://...)" 
-                                            value={newPostImage}
-                                            onChange={(e) => setNewPostImage(e.target.value)}
-                                            className="w-full text-sm p-3 rounded-2xl bg-slate-950 border border-slate-800 focus:outline-none focus:border-pink-500 text-slate-100 placeholder-slate-500 transition"
-                                        />
-                                        <button type="submit" className="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white text-sm font-bold py-3 rounded-2xl shadow-lg shadow-pink-600/30 transition">
+                                        
+                                        {/* Загрузка фото */}
+                                        <div className="flex items-center gap-2 pt-1">
+                                            <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-3 py-2 rounded-xl font-medium border border-slate-200 transition flex items-center gap-1.5">
+                                                📷 Прикрепить фото
+                                                <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setNewPostImage)} className="hidden" />
+                                            </label>
+                                            {newPostImage && <span className="text-[11px] text-emerald-600 font-medium">✓ Фото загружено</span>}
+                                        </div>
+
+                                        <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-2.5 rounded-xl shadow-sm transition">
                                             Опубликовать пост
                                         </button>
                                     </form>
                                 )}
-                                <div className="space-y-3">
+                                <div className="space-y-2.5">
                                     {posts.length === 0 ? (
-                                        <div className="text-center py-12 text-slate-500 bg-slate-900/40 rounded-3xl border border-slate-800/50">
-                                            <p className="text-sm font-medium">Лента новостей пока пуста.</p>
-                                        </div>
+                                        <div className="text-center py-10 text-slate-400 text-xs">Лента новостей пуста.</div>
                                     ) : (
                                         posts.map(p => (
-                                            <div key={p.firebaseId} className="bg-slate-900/90 border border-slate-800/80 rounded-3xl p-4 shadow-xl space-y-3 transition hover:border-slate-700">
+                                            <div key={p.firebaseId} className="bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-sm space-y-2.5">
                                                 <div className="flex justify-between items-center">
                                                     <div className="flex items-center space-x-2">
-                                                        <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-pink-500 to-indigo-600 text-white text-xs font-bold flex items-center justify-center shadow">
+                                                        <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 text-[10px] font-bold flex items-center justify-center">
                                                             {p.author.charAt(0)}
                                                         </div>
                                                         <div>
-                                                            <span className="text-xs font-bold text-slate-200 block">{p.author}</span>
-                                                            <span className="text-[10px] text-indigo-400 font-semibold">{p.classStr}</span>
+                                                            <span className="text-xs font-semibold text-slate-900 block leading-none">{p.author}</span>
+                                                            <span className="text-[10px] text-slate-400">{p.classStr}</span>
                                                         </div>
                                                     </div>
-                                                    <span className="text-[10px] text-slate-500">{p.date}</span>
+                                                    <span className="text-[10px] text-slate-400">{p.date}</span>
                                                 </div>
 
-                                                <p className="text-xs text-slate-200 leading-relaxed">{p.text}</p>
+                                                <p className="text-xs text-slate-700 leading-relaxed">{p.text}</p>
 
                                                 {p.imageUrl && (
-                                                    <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 max-h-64 shadow-inner">
-                                                        <img src={p.imageUrl} alt="Иллюстрация к посту" className="w-full h-full object-cover hover:scale-105 transition duration-500" />
+                                                    <div className="overflow-hidden rounded-xl border border-slate-100 bg-slate-50 max-h-52">
+                                                        <img src={p.imageUrl} alt="Фото поста" className="w-full h-full object-cover" />
                                                     </div>
                                                 )}
 
-                                                <div className="flex justify-between items-center pt-2 border-t border-slate-800/80">
+                                                <div className="flex justify-between items-center pt-2 border-t border-slate-100">
                                                     <button 
                                                         onClick={() => openTelegramChat(p.authorUsername, p.authorTgId)}
-                                                        className="text-xs text-sky-400 font-bold hover:underline flex items-center gap-1">
-                                                        ✈️ Написать автору
+                                                        className="text-[11px] text-blue-600 font-semibold hover:underline">
+                                                        Написать автору
                                                     </button>
                                                     {canDelete(p.authorUsername, p.authorTgId) && (
                                                         <button 
                                                             onClick={() => removePost(p.firebaseId)}
-                                                            className="text-xs text-rose-400 font-bold hover:underline">
+                                                            className="text-[11px] text-rose-500 font-semibold hover:underline">
                                                             Удалить
                                                         </button>
                                                     )}
@@ -485,41 +478,41 @@
 
                     {/* Модальное окно авторизации */}
                     {showAuthModal && (
-                        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-                            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-xs space-y-4 shadow-2xl">
-                                <h3 className="font-extrabold text-white text-center text-base">Авторизация</h3>
+                        <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                            <div className="bg-white border border-slate-200 rounded-3xl p-5 w-full max-w-xs space-y-3.5 shadow-xl">
+                                <h3 className="font-bold text-slate-900 text-center text-sm">Вход в профиль</h3>
                                 <form onSubmit={handleLogin} className="space-y-3">
                                     <div>
-                                        <label className="text-xs text-slate-400 font-medium block mb-1">Имя и фамилия</label>
+                                        <label className="text-[11px] text-slate-500 font-medium block mb-1">Имя и фамилия</label>
                                         <input 
                                             type="text" 
                                             placeholder="Иван Иванов" 
                                             value={authName}
                                             onChange={(e) => setAuthName(e.target.value)}
-                                            className="w-full text-sm p-3 rounded-2xl bg-slate-950 border border-slate-800 focus:outline-none focus:border-indigo-500 text-white"
+                                            className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500 text-slate-800"
                                             required
                                         />
                                     </div>
                                     <div>
-                                        <label className="text-xs text-slate-400 font-medium block mb-1">Telegram @username</label>
+                                        <label className="text-[11px] text-slate-500 font-medium block mb-1">Telegram @username</label>
                                         <input 
                                             type="text" 
                                             placeholder="username" 
                                             value={authUsername}
                                             onChange={(e) => setAuthUsername(e.target.value)}
-                                            className="w-full text-sm p-3 rounded-2xl bg-slate-950 border border-slate-800 focus:outline-none focus:border-indigo-500 text-white"
+                                            className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500 text-slate-800"
                                         />
                                     </div>
-                                    <div className="pt-2 flex gap-2">
+                                    <div className="pt-1 flex gap-2">
                                         <button 
                                             type="button" 
                                             onClick={() => setShowAuthModal(false)}
-                                            className="flex-1 bg-slate-800 text-slate-300 text-xs font-bold py-3 rounded-2xl hover:bg-slate-700 transition">
+                                            className="flex-1 bg-slate-100 text-slate-600 text-xs font-semibold py-2.5 rounded-xl hover:bg-slate-200 transition">
                                             Отмена
                                         </button>
                                         <button 
                                             type="submit" 
-                                            className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-3 rounded-2xl shadow-lg shadow-indigo-600/30 transition">
+                                            className="flex-1 bg-blue-600 text-white text-xs font-semibold py-2.5 rounded-xl hover:bg-blue-700 transition">
                                             Сохранить
                                         </button>
                                     </div>
@@ -528,21 +521,21 @@
                         </div>
                     )}
 
-                    {/* Навигационная панель снизу (Плавающий Glassmorphism бар) */}
-                    <nav className="absolute bottom-3 left-4 right-4 bg-slate-900/90 backdrop-blur-xl border border-slate-800/90 px-3 py-2.5 rounded-3xl flex justify-around shadow-2xl z-20">
+                    {/* Минималистичная нижняя навигация */}
+                    <nav className="absolute bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-slate-200/80 px-4 py-2.5 flex justify-around z-10 shadow-sm">
                         <button 
                             onClick={() => setActiveTab('lost-found')}
-                            className={`flex flex-col items-center text-xs font-bold transition transform active:scale-95 px-4 py-1.5 rounded-2xl ${activeTab === 'lost-found' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' : 'text-slate-400 hover:text-slate-200'}`}>
+                            className={`flex flex-col items-center text-xs font-semibold transition px-4 py-1 rounded-xl ${activeTab === 'lost-found' ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:text-slate-600'}`}>
                             <span>Потеряшки</span>
                         </button>
                         <button 
                             onClick={() => setActiveTab('library')}
-                            className={`flex flex-col items-center text-xs font-bold transition transform active:scale-95 px-4 py-1.5 rounded-2xl ${activeTab === 'library' ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30' : 'text-slate-400 hover:text-slate-200'}`}>
+                            className={`flex flex-col items-center text-xs font-semibold transition px-4 py-1 rounded-xl ${activeTab === 'library' ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:text-slate-600'}`}>
                             <span>Библиотека</span>
                         </button>
                         <button 
                             onClick={() => setActiveTab('hub')}
-                            className={`flex flex-col items-center text-xs font-bold transition transform active:scale-95 px-4 py-1.5 rounded-2xl ${activeTab === 'hub' ? 'bg-pink-600 text-white shadow-lg shadow-pink-600/30' : 'text-slate-400 hover:text-slate-200'}`}>
+                            className={`flex flex-col items-center text-xs font-semibold transition px-4 py-1 rounded-xl ${activeTab === 'hub' ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:text-slate-600'}`}>
                             <span>Лента</span>
                         </button>
                     </nav>
