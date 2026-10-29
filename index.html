@@ -44,7 +44,7 @@
         }
         const db = firebase.database();
 
-        // Главный администратор — ты
+        // Главный администратор
         const ROOT_ADMIN = "destroyyyx"; 
 
         const { useState, useEffect } = React;
@@ -59,6 +59,7 @@
             const [editingItem, setEditingItem] = useState(null); 
             const [editTitle, setEditTitle] = useState('');
             const [editDesc, setEditDesc] = useState('');
+            const [editImage, setEditImage] = useState('');
 
             const [authName, setAuthName] = useState('');
             const [authUsername, setAuthUsername] = useState('');
@@ -188,6 +189,7 @@
                 setEditingItem({ ...item, type });
                 setEditTitle(item.title || item.text || '');
                 setEditDesc(item.desc || item.author || '');
+                setEditImage(item.imageUrl || '');
             };
 
             const saveEditedItem = (e) => {
@@ -198,13 +200,13 @@
                 let updates = {};
 
                 if (type === 'lost') {
-                    updates = { title: editTitle, desc: editDesc };
+                    updates = { title: editTitle, desc: editDesc, imageUrl: editImage };
                     db.ref(`lost_items/${firebaseId}`).update(updates);
                 } else if (type === 'book') {
                     updates = { title: editTitle, author: editDesc };
                     db.ref(`books/${firebaseId}`).update(updates);
                 } else if (type === 'post') {
-                    updates = { text: editTitle };
+                    updates = { text: editTitle, imageUrl: editImage };
                     db.ref(`posts/${firebaseId}`).update(updates);
                 }
 
@@ -494,12 +496,17 @@
                                             onChange={(e) => setNewLostDesc(e.target.value)}
                                             className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500 text-slate-800 resize-none h-16"
                                         />
-                                        <div className="flex items-center gap-2 pt-1">
+                                        <div className="flex items-center gap-2 pt-1 flex-wrap">
                                             <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-3 py-2 rounded-xl font-medium border transition flex items-center gap-1.5">
                                                 📷 Прикрепить фото
                                                 <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setNewLostImage)} className="hidden" />
                                             </label>
-                                            {newLostImage && <span className="text-[11px] text-emerald-600 font-medium">✓ Фото готово</span>}
+                                            {newLostImage && (
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[11px] text-emerald-600 font-medium">✓ Фото загружено</span>
+                                                    <button type="button" onClick={() => setNewLostImage('')} className="text-[11px] text-rose-500 hover:underline font-semibold">Удалить фото</button>
+                                                </div>
+                                            )}
                                         </div>
                                         <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-2.5 rounded-xl shadow-sm transition">
                                             Опубликовать
@@ -643,12 +650,17 @@
                                             onChange={(e) => setNewPostText(e.target.value)}
                                             className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500 text-slate-800 resize-none h-16"
                                         />
-                                        <div className="flex items-center gap-2 pt-1">
+                                        <div className="flex items-center gap-2 pt-1 flex-wrap">
                                             <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-3 py-2 rounded-xl font-medium border transition flex items-center gap-1.5">
                                                 📷 Прикрепить фото
                                                 <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setNewPostImage)} className="hidden" />
                                             </label>
-                                            {newPostImage && <span className="text-[11px] text-emerald-600 font-medium">✓ Фото готово</span>}
+                                            {newPostImage && (
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[11px] text-emerald-600 font-medium">✓ Фото загружено</span>
+                                                    <button type="button" onClick={() => setNewPostImage('')} className="text-[11px] text-rose-500 hover:underline font-semibold">Удалить фото</button>
+                                                </div>
+                                            )}
                                         </div>
                                         <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-2.5 rounded-xl shadow-sm transition">
                                             Опубликовать пост
@@ -720,7 +732,7 @@
                         )}
                     </main>
 
-                    {/* Модальное окно редактирования записи */}
+                    {/* Модальное окно редактирования записи (включая фото) */}
                     {editingItem && (
                         <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                             <div className="bg-white border border-slate-200 rounded-3xl p-5 w-full max-w-xs space-y-3.5 shadow-xl">
@@ -748,6 +760,27 @@
                                                 onChange={(e) => setEditDesc(e.target.value)}
                                                 className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800"
                                             />
+                                        </div>
+                                    )}
+                                    {editingItem.type !== 'book' && (
+                                        <div className="space-y-1.5">
+                                            <label className="text-[11px] text-slate-500 font-medium block">Фотография</label>
+                                            {editImage && (
+                                                <div className="relative w-full h-24 bg-slate-900 rounded-xl overflow-hidden flex items-center justify-center">
+                                                    <img src={editImage} alt="Превью" className="w-full h-full object-contain" />
+                                                </div>
+                                            )}
+                                            <div className="flex gap-2 items-center">
+                                                <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-600 text-[11px] px-2.5 py-1.5 rounded-xl font-medium border transition flex items-center gap-1">
+                                                    📷 Изменить фото
+                                                    <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setEditImage)} className="hidden" />
+                                                </label>
+                                                {editImage && (
+                                                    <button type="button" onClick={() => setEditImage('')} className="bg-rose-50 text-rose-600 hover:bg-rose-100 text-[11px] px-2.5 py-1.5 rounded-xl font-medium transition">
+                                                        Удалить фото
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     )}
                                     <div className="pt-1 flex gap-2">
@@ -884,7 +917,7 @@
                                             <label className="text-[11px] text-slate-500 font-medium block mb-1">Буква</label>
                                             <select 
                                                 value={authLetter} 
-                                                onChange={(e) => setAuthLetter(e.target.value)}
+                                                onChange={(e) =>: setAuthLetter(e.target.value)}
                                                 className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200">
                                                 <option value="А">А</option>
                                                 <option value="Б">Б</option>
