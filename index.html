@@ -14,7 +14,7 @@
     <!-- Telegram Web App SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-    <!-- Firebase SDKs (v9 Compat) -->
+    <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
 </head>
@@ -34,11 +34,13 @@
             measurementId: "G-5KE6VEHLC9" 
         };
 
-        // Инициализация Firebase
         if (!firebase.apps.length) {
             firebase.initializeApp(firebaseConfig);
         }
         const db = firebase.database();
+
+        // ⚠️ ВПИШИ СЮДА СВОЙ TELEGRAM USERNAME (без знака @), чтобы иметь права админа на удаление любых записей!
+        const ADMIN_USERNAME = "destroyyyx"; 
 
         const { useState, useEffect } = React;
 
@@ -84,10 +86,9 @@
                 }
             }, []);
 
-            // Живая синхронизация с Firebase Realtime Database
+            // Синхронизация с Firebase
             useEffect(() => {
-                const lostRef = db.ref('lost_items');
-                lostRef.on('value', (snapshot) => {
+                db.ref('lost_items').on('value', (snapshot) => {
                     const data = snapshot.val();
                     if (data) {
                         const list = Object.keys(data).map(key => ({ firebaseId: key, ...data[key] }));
@@ -97,8 +98,7 @@
                     }
                 });
 
-                const booksRef = db.ref('books');
-                booksRef.on('value', (snapshot) => {
+                db.ref('books').on('value', (snapshot) => {
                     const data = snapshot.val();
                     if (data) {
                         const list = Object.keys(data).map(key => ({ firebaseId: key, ...data[key] }));
@@ -108,8 +108,7 @@
                     }
                 });
 
-                const postsRef = db.ref('posts');
-                postsRef.on('value', (snapshot) => {
+                db.ref('posts').on('value', (snapshot) => {
                     const data = snapshot.val();
                     if (data) {
                         const list = Object.keys(data).map(key => ({ firebaseId: key, ...data[key] }));
@@ -144,13 +143,20 @@
                 setShowAuthModal(false);
             };
 
-            // Функции добавления в базу данных
+            // Проверка: является ли текущий юзер создателем или админом
+            const canDelete = (itemAuthorUsername, itemAuthorTgId) => {
+                if (!currentUser) return false;
+                const isAdmin = currentUser.username && currentUser.username.toLowerCase() === ADMIN_USERNAME.toLowerCase();
+                const isAuthor = (currentUser.username && currentUser.username === itemAuthorUsername) || (currentUser.tgId && currentUser.tgId === itemAuthorTgId);
+                return isAdmin || isAuthor;
+            };
+
+            // Функции добавления
             const addLostItem = (e) => {
                 e.preventDefault();
                 if (!newLostTitle.trim() || !currentUser) return;
                 
                 db.ref('lost_items').push({
-                    id: Date.now(),
                     title: newLostTitle,
                     desc: newLostDesc,
                     author: currentUser.name,
@@ -173,7 +179,6 @@
                 if (!newBookTitle.trim() || !currentUser) return;
 
                 db.ref('books').push({
-                    id: Date.now(),
                     title: newBookTitle,
                     author: newBookAuthor || 'Не указан',
                     holder: currentUser.name,
@@ -186,12 +191,15 @@
                 setNewBookAuthor('');
             };
 
+            const removeBook = (firebaseId) => {
+                db.ref(`books/${firebaseId}`).remove();
+            };
+
             const addPost = (e) => {
                 e.preventDefault();
                 if (!newPostText.trim() || !currentUser) return;
 
                 db.ref('posts').push({
-                    id: Date.now(),
                     text: newPostText,
                     author: currentUser.name,
                     authorUsername: currentUser.username,
@@ -201,6 +209,10 @@
                 });
 
                 setNewPostText('');
+            };
+
+            const removePost = (firebaseId) => {
+                db.ref(`posts/${firebaseId}`).remove();
             };
 
             return (
@@ -283,10 +295,10 @@
                                                             className="bg-sky-50 text-sky-600 hover:bg-sky-100 text-xs px-3 py-1.5 rounded-xl font-medium transition flex items-center gap-1">
                                                             ✈️ Написать
                                                         </button>
-                                                        {currentUser && currentUser.name === item.author && (
+                                                        {canDelete(item.authorUsername, item.authorTgId) && (
                                                             <button 
                                                                 onClick={() => removeLostItem(item.firebaseId)}
-                                                                className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 text-xs px-3 py-1.5 rounded-xl font-medium transition">
+                                                                className="bg-red-50 text-red-600 hover:bg-red-100 text-xs px-3 py-1.5 rounded-xl font-medium transition">
                                                                 Удалить
                                                             </button>
                                                         )}
@@ -333,11 +345,20 @@
                                                     <h3 className="font-semibold text-slate-800 text-sm">{b.title}</h3>
                                                     <p className="text-xs text-slate-500">{b.author} • {b.holder}</p>
                                                 </div>
-                                                <button 
-                                                    onClick={() => openTelegramChat(b.holderUsername, b.holderTgId)}
-                                                    className="bg-sky-50 text-sky-600 text-xs px-3 py-1.5 rounded-xl font-medium">
-                                                    Взять
-                                                </button>
+                                                <div className="flex gap-2">
+                                                    <button 
+                                                        onClick={() => openTelegramChat(b.holderUsername, b.holderTgId)}
+                                                        className="bg-sky-50 text-sky-600 text-xs px-3 py-1.5 rounded-xl font-medium">
+                                                        Взять
+                                                    </button>
+                                                    {canDelete(b.holderUsername, b.holderTgId) && (
+                                                        <button 
+                                                            onClick={() => removeBook(b.firebaseId)}
+                                                            className="bg-red-50 text-red-600 text-xs px-3 py-1.5 rounded-xl font-medium">
+                                                            Удалить
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
                                         ))
                                     )}
@@ -369,11 +390,20 @@
                                             <div key={p.firebaseId} className="p-4 rounded-2xl border border-slate-100 bg-white shadow-sm space-y-2">
                                                 <div className="flex justify-between items-center">
                                                     <span className="text-xs font-semibold text-slate-800">{p.author} ({p.classStr})</span>
-                                                    <button 
-                                                        onClick={() => openTelegramChat(p.authorUsername, p.authorTgId)}
-                                                        className="text-xs text-sky-600 hover:underline">
-                                                        Написать
-                                                    </button>
+                                                    <div className="flex items-center gap-2">
+                                                        <button 
+                                                            onClick={() => openTelegramChat(p.authorUsername, p.authorTgId)}
+                                                            className="text-xs text-sky-600 hover:underline">
+                                                            Написать
+                                                        </button>
+                                                        {canDelete(p.authorUsername, p.authorTgId) && (
+                                                            <button 
+                                                                onClick={() => removePost(p.firebaseId)}
+                                                                className="text-xs text-red-500 hover:underline">
+                                                                Удалить
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                                 <p className="text-xs text-slate-600">{p.text}</p>
                                             </div>
@@ -384,7 +414,6 @@
                         )}
                     </main>
 
-                    {/* Модальное окно авторизации на случай, если Telegram WebApp не передал данные */}
                     {showAuthModal && (
                         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                             <div className="bg-white rounded-3xl p-6 w-full max-w-xs space-y-4 shadow-xl">
