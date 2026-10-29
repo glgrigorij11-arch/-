@@ -44,7 +44,7 @@
         }
         const db = firebase.database();
 
-        // ⚠️ Впиши сюда свой главный Telegram username (без @) как супер-админа
+        // Главный администратор — ты
         const ROOT_ADMIN = "destroyyyx"; 
 
         const { useState, useEffect } = React;
@@ -54,6 +54,11 @@
             const [currentUser, setCurrentUser] = useState(null);
             const [showAuthModal, setShowAuthModal] = useState(false);
             const [showProfileModal, setShowProfileModal] = useState(false);
+            
+            // Состояние модального окна редактирования
+            const [editingItem, setEditingItem] = useState(null); 
+            const [editTitle, setEditTitle] = useState('');
+            const [editDesc, setEditDesc] = useState('');
 
             const [authName, setAuthName] = useState('');
             const [authUsername, setAuthUsername] = useState('');
@@ -172,13 +177,40 @@
                 db.ref(`banned_users/${username}`).remove();
             };
 
-            const canDelete = (itemAuthorUsername, itemAuthorTgId) => {
+            const canDeleteOrEdit = (itemAuthorUsername, itemAuthorTgId) => {
                 if (!currentUser) return false;
                 const isAuthor = (currentUser.username && currentUser.username === itemAuthorUsername) || (currentUser.tgId && currentUser.tgId === itemAuthorTgId);
                 return isAdmin() || isAuthor;
             };
 
-            // Функция открытия чата Telegram с автозаполнением текста
+            // Функции редактирования
+            const startEditing = (item, type) => {
+                setEditingItem({ ...item, type });
+                setEditTitle(item.title || item.text || '');
+                setEditDesc(item.desc || item.author || '');
+            };
+
+            const saveEditedItem = (e) => {
+                e.preventDefault();
+                if (!editingItem) return;
+
+                const { firebaseId, type } = editingItem;
+                let updates = {};
+
+                if (type === 'lost') {
+                    updates = { title: editTitle, desc: editDesc };
+                    db.ref(`lost_items/${firebaseId}`).update(updates);
+                } else if (type === 'book') {
+                    updates = { title: editTitle, author: editDesc };
+                    db.ref(`books/${firebaseId}`).update(updates);
+                } else if (type === 'post') {
+                    updates = { text: editTitle };
+                    db.ref(`posts/${firebaseId}`).update(updates);
+                }
+
+                setEditingItem(null);
+            };
+
             const openTelegramChat = (username, tgId, itemTitle, itemType) => {
                 let defaultText = `Здравствуйте! Пишу по поводу вашего объявления «${itemTitle}» (${itemType}).`;
                 const encodedText = encodeURIComponent(defaultText);
@@ -291,7 +323,7 @@
                     title: newBookTitle,
                     author: newBookAuthor || 'Не указан',
                     holder: currentUser.name,
-                    holderUsername: currentUser.holderUsername || currentUser.username,
+                    holderUsername: currentUser.username,
                     holderTgId: currentUser.tgId,
                     classStr: `${currentUser.grade}-${currentUser.letter}`,
                     status: 'Доступна'
@@ -499,12 +531,19 @@
                                                             className="bg-sky-50 text-sky-600 hover:bg-sky-100 text-[11px] px-2.5 py-1 rounded-lg font-medium transition">
                                                             Написать
                                                         </button>
-                                                        {canDelete(item.authorUsername, item.authorTgId) && (
-                                                            <button 
-                                                                onClick={() => removeLostItem(item.firebaseId)}
-                                                                className="bg-rose-50 text-rose-600 hover:bg-rose-100 text-[11px] px-2.5 py-1 rounded-lg font-medium transition">
-                                                                Удалить
-                                                            </button>
+                                                        {canDeleteOrEdit(item.authorUsername, item.authorTgId) && (
+                                                            <>
+                                                                <button 
+                                                                    onClick={() => startEditing(item, 'lost')}
+                                                                    className="bg-amber-50 text-amber-600 hover:bg-amber-100 text-[11px] px-2 py-1 rounded-lg font-medium transition" title="Редактировать">
+                                                                    ✏️
+                                                                </button>
+                                                                <button 
+                                                                    onClick={() => removeLostItem(item.firebaseId)}
+                                                                    className="bg-rose-50 text-rose-600 hover:bg-rose-100 text-[11px] px-2.5 py-1 rounded-lg font-medium transition">
+                                                                    Удалить
+                                                                </button>
+                                                            </>
                                                         )}
                                                         {isAdmin() && item.authorUsername && item.authorUsername.toLowerCase() !== ROOT_ADMIN.toLowerCase() && (
                                                             <button 
@@ -563,12 +602,19 @@
                                                         className="bg-sky-50 text-sky-600 text-[11px] px-2.5 py-1.5 rounded-lg font-medium">
                                                         Взять
                                                     </button>
-                                                    {canDelete(b.holderUsername, b.holderTgId) && (
-                                                        <button 
-                                                            onClick={() => removeBook(b.firebaseId)}
-                                                            className="bg-rose-50 text-rose-600 text-[11px] px-2.5 py-1.5 rounded-lg font-medium">
-                                                            Удалить
-                                                        </button>
+                                                    {canDeleteOrEdit(b.holderUsername, b.holderTgId) && (
+                                                        <>
+                                                            <button 
+                                                                onClick={() => startEditing(b, 'book')}
+                                                                className="bg-amber-50 text-amber-600 hover:bg-amber-100 text-[11px] px-2 py-1 rounded-lg font-medium transition" title="Редактировать">
+                                                                ✏️
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => removeBook(b.firebaseId)}
+                                                                className="bg-rose-50 text-rose-600 text-[11px] px-2.5 py-1.5 rounded-lg font-medium">
+                                                                Удалить
+                                                            </button>
+                                                        </>
                                                     )}
                                                     {isAdmin() && b.holderUsername && b.holderUsername.toLowerCase() !== ROOT_ADMIN.toLowerCase() && (
                                                         <button 
@@ -643,12 +689,19 @@
                                                         Написать автору
                                                     </button>
                                                     <div className="flex gap-2 items-center">
-                                                        {canDelete(p.authorUsername, p.authorTgId) && (
-                                                            <button 
-                                                                onClick={() => removePost(p.firebaseId)}
-                                                                className="text-[11px] text-rose-500 font-semibold hover:underline">
-                                                                Удалить
-                                                            </button>
+                                                        {canDeleteOrEdit(p.authorUsername, p.authorTgId) && (
+                                                            <>
+                                                                <button 
+                                                                    onClick={() => startEditing(p, 'post')}
+                                                                    className="text-[11px] text-amber-600 font-semibold hover:underline" title="Редактировать">
+                                                                    ✏️ Изменить
+                                                                </button>
+                                                                <button 
+                                                                    onClick={() => removePost(p.firebaseId)}
+                                                                    className="text-[11px] text-rose-500 font-semibold hover:underline">
+                                                                    Удалить
+                                                                </button>
+                                                            </>
                                                         )}
                                                         {isAdmin() && p.authorUsername && p.authorUsername.toLowerCase() !== ROOT_ADMIN.toLowerCase() && (
                                                             <button 
@@ -667,6 +720,54 @@
                         )}
                     </main>
 
+                    {/* Модальное окно редактирования записи */}
+                    {editingItem && (
+                        <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                            <div className="bg-white border border-slate-200 rounded-3xl p-5 w-full max-w-xs space-y-3.5 shadow-xl">
+                                <h3 className="font-bold text-slate-900 text-center text-sm">Редактирование</h3>
+                                <form onSubmit={saveEditedItem} className="space-y-3">
+                                    <div>
+                                        <label className="text-[11px] text-slate-500 font-medium block mb-1">
+                                            {editingItem.type === 'post' ? 'Текст поста' : 'Название / Заголовок'}
+                                        </label>
+                                        <textarea 
+                                            value={editTitle}
+                                            onChange={(e) => setEditTitle(e.target.value)}
+                                            className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 resize-none h-20"
+                                            required
+                                        />
+                                    </div>
+                                    {editingItem.type !== 'post' && (
+                                        <div>
+                                            <label className="text-[11px] text-slate-500 font-medium block mb-1">
+                                                {editingItem.type === 'lost' ? 'Описание' : 'Автор книги'}
+                                            </label>
+                                            <input 
+                                                type="text" 
+                                                value={editDesc}
+                                                onChange={(e) => setEditDesc(e.target.value)}
+                                                className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800"
+                                            />
+                                        </div>
+                                    )}
+                                    <div className="pt-1 flex gap-2">
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setEditingItem(null)}
+                                            className="flex-1 bg-slate-100 text-slate-600 text-xs font-semibold py-2.5 rounded-xl hover:bg-slate-200 transition">
+                                            Отмена
+                                        </button>
+                                        <button 
+                                            type="submit" 
+                                            className="flex-1 bg-blue-600 text-white text-xs font-semibold py-2.5 rounded-xl hover:bg-blue-700 transition">
+                                            Сохранить
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Модальное окно авторизации */}
                     {showAuthModal && (
                         <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -680,7 +781,7 @@
                                             placeholder="Иван Иванов" 
                                             value={authName}
                                             onChange={(e) => setAuthName(e.target.value)}
-                                            className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500 text-slate-800"
+                                            className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800"
                                             required
                                         />
                                     </div>
@@ -691,7 +792,7 @@
                                             placeholder="username" 
                                             value={authUsername}
                                             onChange={(e) => setAuthUsername(e.target.value)}
-                                            className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500 text-slate-800"
+                                            className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800"
                                         />
                                     </div>
                                     <div className="flex gap-2">
@@ -740,7 +841,7 @@
                         </div>
                     )}
 
-                    {/* Модальное окно редактирования профиля */}
+                    {/* Модальное окно профиля */}
                     {showProfileModal && (
                         <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                             <div className="bg-white border border-slate-200 rounded-3xl p-5 w-full max-w-xs space-y-3.5 shadow-xl">
