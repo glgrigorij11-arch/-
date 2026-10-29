@@ -44,8 +44,8 @@
         }
         const db = firebase.database();
 
-        // ⚠️ Впиши сюда свой Telegram username для прав админа
-        const ADMIN_USERNAME = "destroyyyx"; 
+        // ⚠️ Впиши сюда свой главный Telegram username (без @) как супер-админа
+        const ROOT_ADMIN = "destroyyyx"; 
 
         const { useState, useEffect } = React;
 
@@ -53,6 +53,8 @@
             const [activeTab, setActiveTab] = useState('lost-found');
             const [currentUser, setCurrentUser] = useState(null);
             const [showAuthModal, setShowAuthModal] = useState(false);
+            const [showProfileModal, setShowProfileModal] = useState(false);
+
             const [authName, setAuthName] = useState('');
             const [authUsername, setAuthUsername] = useState('');
             const [authGrade, setAuthGrade] = useState('9');
@@ -61,6 +63,8 @@
             const [lostItems, setLostItems] = useState([]);
             const [books, setBooks] = useState([]);
             const [posts, setPosts] = useState([]);
+            const [bannedUsers, setBannedUsers] = useState({});
+            const [adminUsers, setAdminUsers] = useState({});
 
             const [newLostTitle, setNewLostTitle] = useState('');
             const [newLostDesc, setNewLostDesc] = useState('');
@@ -72,8 +76,14 @@
             const [newPostText, setNewPostText] = useState('');
             const [newPostImage, setNewPostImage] = useState('');
 
-            // Авторизация через Telegram WebApp
+            // Авторизация
             useEffect(() => {
+                const savedUser = localStorage.getItem('lyceum_user');
+                if (savedUser) {
+                    setCurrentUser(JSON.parse(savedUser));
+                    return;
+                }
+
                 if (window.Telegram && window.Telegram.WebApp) {
                     const tg = window.Telegram.WebApp;
                     tg.ready();
@@ -83,14 +93,16 @@
                         const tgUser = tg.initDataUnsafe.user;
                         const fullName = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') || tgUser.username || 'Ученик';
                         
-                        setCurrentUser({
+                        const defaultUser = {
                             name: fullName,
-                            username: tgUser.username || '',
+                            username: tgUser.username ? tgUser.username.toLowerCase() : '',
                             tgId: tgUser.id,
                             grade: '9',
                             letter: 'А',
                             avatar: fullName.charAt(0).toUpperCase()
-                        });
+                        };
+                        setCurrentUser(defaultUser);
+                        localStorage.setItem('lyceum_user', JSON.stringify(defaultUser));
                     }
                 }
             }, []);
@@ -99,30 +111,88 @@
             useEffect(() => {
                 db.ref('lost_items').on('value', (snapshot) => {
                     const data = snapshot.val();
-                    if (data) {
-                        const list = Object.keys(data).map(key => ({ firebaseId: key, ...data[key] }));
-                        setLostItems(list.reverse());
-                    } else { setLostItems([]); }
+                    setLostItems(data ? Object.keys(data).map(key => ({ firebaseId: key, ...data[key] })).reverse() : []);
                 });
 
                 db.ref('books').on('value', (snapshot) => {
                     const data = snapshot.val();
-                    if (data) {
-                        const list = Object.keys(data).map(key => ({ firebaseId: key, ...data[key] }));
-                        setBooks(list.reverse());
-                    } else { setBooks([]); }
+                    setBooks(data ? Object.keys(data).map(key => ({ firebaseId: key, ...data[key] })).reverse() : []);
                 });
 
                 db.ref('posts').on('value', (snapshot) => {
                     const data = snapshot.val();
-                    if (data) {
-                        const list = Object.keys(data).map(key => ({ firebaseId: key, ...data[key] }));
-                        setPosts(list.reverse());
-                    } else { setPosts([]); }
+                    setPosts(data ? Object.keys(data).map(key => ({ firebaseId: key, ...data[key] })).reverse() : []);
+                });
+
+                db.ref('banned_users').on('value', (snapshot) => {
+                    setBannedUsers(snapshot.val() || {});
+                });
+
+                db.ref('admin_users').on('value', (snapshot) => {
+                    setAdminUsers(snapshot.val() || {});
                 });
             }, []);
 
-            // Автоматическое сжатие изображений > 1.5 МБ
+            const isBanned = () => {
+                if (!currentUser || !currentUser.username) return false;
+                return !!bannedUsers[currentUser.username.toLowerCase()];
+            };
+
+            const isAdmin = () => {
+                if (!currentUser || !currentUser.username) return false;
+                const tag = currentUser.username.toLowerCase();
+                return tag === ROOT_ADMIN.toLowerCase() || !!adminUsers[tag];
+            };
+
+            const addAdmin = (username) => {
+                if (!username) return;
+                const cleanTag = username.replace('@', '').toLowerCase();
+                db.ref(`admin_users/${cleanTag}`).set(true);
+                alert(`Пользователь @${cleanTag} назначен администратором!`);
+            };
+
+            const removeAdmin = (username) => {
+                if (username.toLowerCase() === ROOT_ADMIN.toLowerCase()) {
+                    alert("Нельзя удалить главного администратора!");
+                    return;
+                }
+                db.ref(`admin_users/${username}`).remove();
+            };
+
+            const banUser = (username) => {
+                if (!username) { alert("У пользователя нет username."); return; }
+                const cleanTag = username.replace('@', '').toLowerCase();
+                if (cleanTag === ROOT_ADMIN.toLowerCase()) { alert("Нельзя забанить администратора!"); return; }
+                if (confirm(`Забанить пользователя @${cleanTag}?`)) {
+                    db.ref(`banned_users/${cleanTag}`).set(true);
+                }
+            };
+
+            const unbanUser = (username) => {
+                db.ref(`banned_users/${username}`).remove();
+            };
+
+            const canDelete = (itemAuthorUsername, itemAuthorTgId) => {
+                if (!currentUser) return false;
+                const isAuthor = (currentUser.username && currentUser.username === itemAuthorUsername) || (currentUser.tgId && currentUser.tgId === itemAuthorTgId);
+                return isAdmin() || isAuthor;
+            };
+
+            // Функция открытия чата Telegram с автозаполнением текста
+            const openTelegramChat = (username, tgId, itemTitle, itemType) => {
+                let defaultText = `Здравствуйте! Пишу по поводу вашего объявления «${itemTitle}» (${itemType}).`;
+                const encodedText = encodeURIComponent(defaultText);
+
+                if (username) {
+                    window.open(`https://t.me/${username}?text=${encodedText}`, '_blank');
+                } else if (tgId) {
+                    window.open(`tg://user?id=${tgId}`, '_blank');
+                } else {
+                    alert("У пользователя не указан username в Telegram");
+                }
+            };
+
+            // Сжатие фото
             const handleImageUpload = (e, setImageCallback) => {
                 const file = e.target.files[0];
                 if (!file) return;
@@ -134,7 +204,6 @@
                         const canvas = document.createElement('canvas');
                         let width = img.width;
                         let height = img.height;
-
                         const MAX_SIZE = 1000;
                         if (width > MAX_SIZE || height > MAX_SIZE) {
                             if (width > height) {
@@ -145,7 +214,6 @@
                                 height = MAX_SIZE;
                             }
                         }
-
                         canvas.width = width;
                         canvas.height = height;
                         const ctx = canvas.getContext('2d');
@@ -153,12 +221,10 @@
 
                         let quality = 0.8;
                         let dataUrl = canvas.toDataURL('image/jpeg', quality);
-
                         while (dataUrl.length > 1.5 * 1024 * 1024 && quality > 0.2) {
                             quality -= 0.1;
                             dataUrl = canvas.toDataURL('image/jpeg', quality);
                         }
-
                         setImageCallback(dataUrl);
                     };
                     img.src = event.target.result;
@@ -166,39 +232,36 @@
                 reader.readAsDataURL(file);
             };
 
-            const openTelegramChat = (username, tgId) => {
-                if (username) {
-                    window.open(`https://t.me/${username}`, '_blank');
-                } else if (tgId) {
-                    window.open(`tg://user?id=${tgId}`, '_blank');
-                } else {
-                    alert("У пользователя не указан username в Telegram");
-                }
-            };
-
-            const handleLogin = (e) => {
+            const handleSaveProfile = (e) => {
                 e.preventDefault();
                 if (!authName.trim()) return;
+                const cleanTag = authUsername.replace('@', '').trim().toLowerCase();
                 const user = {
                     name: authName.trim(),
-                    username: authUsername.replace('@', '').trim(),
+                    username: cleanTag,
                     grade: authGrade,
                     letter: authLetter,
                     avatar: authName.trim().charAt(0).toUpperCase()
                 };
                 setCurrentUser(user);
+                localStorage.setItem('lyceum_user', JSON.stringify(user));
                 setShowAuthModal(false);
+                setShowProfileModal(false);
             };
 
-            const canDelete = (itemAuthorUsername, itemAuthorTgId) => {
-                if (!currentUser) return false;
-                const isAdmin = currentUser.username && currentUser.username.toLowerCase() === ADMIN_USERNAME.toLowerCase();
-                const isAuthor = (currentUser.username && currentUser.username === itemAuthorUsername) || (currentUser.tgId && currentUser.tgId === itemAuthorTgId);
-                return isAdmin || isAuthor;
+            const openProfileSettings = () => {
+                if (currentUser) {
+                    setAuthName(currentUser.name);
+                    setAuthUsername(currentUser.username || '');
+                    setAuthGrade(currentUser.grade || '9');
+                    setAuthLetter(currentUser.letter || 'А');
+                }
+                setShowProfileModal(true);
             };
 
             const addLostItem = (e) => {
                 e.preventDefault();
+                if (isBanned()) { alert("Вы забанены."); return; }
                 if (!newLostTitle.trim() || !currentUser) return;
                 
                 db.ref('lost_items').push({
@@ -221,14 +284,16 @@
 
             const addBook = (e) => {
                 e.preventDefault();
+                if (isBanned()) { alert("Вы забанены."); return; }
                 if (!newBookTitle.trim() || !currentUser) return;
 
                 db.ref('books').push({
                     title: newBookTitle,
                     author: newBookAuthor || 'Не указан',
                     holder: currentUser.name,
-                    holderUsername: currentUser.username,
+                    holderUsername: currentUser.holderUsername || currentUser.username,
                     holderTgId: currentUser.tgId,
+                    classStr: `${currentUser.grade}-${currentUser.letter}`,
                     status: 'Доступна'
                 });
 
@@ -240,6 +305,7 @@
 
             const addPost = (e) => {
                 e.preventDefault();
+                if (isBanned()) { alert("Вы забанены."); return; }
                 if (!newPostText.trim() || !currentUser) return;
 
                 db.ref('posts').push({
@@ -273,58 +339,136 @@
                             </div>
                         </div>
 
-                        <div>
+                        <div className="flex items-center gap-1.5">
+                            {isAdmin() && (
+                                <button 
+                                    onClick={() => setActiveTab('admin-panel')}
+                                    className={`text-xs font-semibold px-2.5 py-1.5 rounded-xl border transition ${activeTab === 'admin-panel' ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-50 text-blue-600 border-blue-200'}`}>
+                                    🛡️ Админка
+                                </button>
+                            )}
+
                             {currentUser ? (
-                                <div className="flex items-center space-x-2 bg-slate-100 px-2.5 py-1 rounded-full border border-slate-200/60">
+                                <button 
+                                    onClick={openProfileSettings}
+                                    className="flex items-center space-x-1.5 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-full border border-slate-200 transition">
                                     <div className="w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] flex items-center font-bold justify-center">
                                         {currentUser.avatar}
                                     </div>
                                     <span className="text-xs font-medium text-slate-700">
-                                        {currentUser.username ? `@${currentUser.username}` : currentUser.name}
+                                        {currentUser.grade}-{currentUser.letter}
                                     </span>
-                                </div>
+                                </button>
                             ) : (
                                 <button 
-                                    onClick={() => setShowAuthModal(true)}
-                                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3.5 py-1.5 rounded-xl shadow-sm transition">
+                                    onClick={() => { setAuthName(''); setAuthUsername(''); setShowAuthModal(true); }}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-xl shadow-sm transition">
                                     Войти
                                 </button>
                             )}
                         </div>
                     </header>
 
+                    {/* Бан-баннер */}
+                    {isBanned() && (
+                        <div className="bg-rose-500 text-white text-xs py-2 px-4 text-center font-semibold">
+                            ⚠️ Ваш аккаунт заблокирован администратором. Публикация записей ограничена.
+                        </div>
+                    )}
+
                     {/* Контент */}
                     <main className="flex-1 p-4 overflow-y-auto space-y-4 pb-24">
                         
+                        {/* ПАНЕЛЬ АДМИНА */}
+                        {activeTab === 'admin-panel' && isAdmin() && (
+                            <div className="space-y-4">
+                                <h2 className="text-sm font-bold text-blue-600 uppercase tracking-wider px-1">Панель администратора</h2>
+                                
+                                <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
+                                    <h3 className="text-xs font-bold text-slate-800">Список администраторов</h3>
+                                    <form onSubmit={(e) => {
+                                        e.preventDefault();
+                                        const input = e.target.elements.newAdminTag.value.trim();
+                                        if(input) { addAdmin(input); e.target.reset(); }
+                                    }} className="flex gap-2">
+                                        <input 
+                                            name="newAdminTag"
+                                            type="text" 
+                                            placeholder="username (без @)" 
+                                            className="flex-1 text-xs p-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500"
+                                            required
+                                        />
+                                        <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-2 rounded-xl">
+                                            Добавить
+                                        </button>
+                                    </form>
+
+                                    <div className="space-y-1.5 pt-1">
+                                        <div className="flex justify-between items-center bg-slate-50 p-2 rounded-xl border text-xs">
+                                            <span className="font-bold text-slate-800">@{ROOT_ADMIN} <span className="text-[10px] text-blue-600">(Главный)</span></span>
+                                        </div>
+                                        {Object.keys(adminUsers).map(adminTag => (
+                                            <div key={adminTag} className="flex justify-between items-center bg-slate-50 p-2 rounded-xl border text-xs">
+                                                <span className="font-semibold text-slate-800">@{adminTag}</span>
+                                                <button 
+                                                    onClick={() => removeAdmin(adminTag)}
+                                                    className="text-rose-500 hover:underline font-semibold text-[11px]">
+                                                    Удалить
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
+                                    <h3 className="text-xs font-bold text-rose-600">Черный список (Банлист)</h3>
+                                    {Object.keys(bannedUsers).length === 0 ? (
+                                        <p className="text-xs text-slate-400 py-2">Список забаненных пуст.</p>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            {Object.keys(bannedUsers).map(username => (
+                                                <div key={username} className="flex justify-between items-center bg-slate-50 p-2 rounded-xl border text-xs">
+                                                    <span className="font-bold text-slate-800">@{username}</span>
+                                                    <button 
+                                                        onClick={() => unbanUser(username)}
+                                                        className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-2.5 py-1 rounded-lg font-semibold transition">
+                                                        Разбанить
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
                         {/* ПОТЕРЯШКИ */}
                         {activeTab === 'lost-found' && (
                             <div className="space-y-3">
                                 <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider px-1">Бюро Потеряшек</h2>
 
-                                {currentUser && (
+                                {currentUser && !isBanned() && (
                                     <form onSubmit={addLostItem} className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-2.5">
                                         <input 
                                             type="text" 
                                             placeholder="Что потерялось или нашлось?" 
                                             value={newLostTitle}
                                             onChange={(e) => setNewLostTitle(e.target.value)}
-                                            className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500 text-slate-800 placeholder-slate-400"
+                                            className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500 text-slate-800"
                                         />
                                         <textarea 
                                             placeholder="Описание, где оставлено..." 
                                             value={newLostDesc}
                                             onChange={(e) => setNewLostDesc(e.target.value)}
-                                            className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500 text-slate-800 placeholder-slate-400 resize-none h-16"
+                                            className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500 text-slate-800 resize-none h-16"
                                         />
-                                        
                                         <div className="flex items-center gap-2 pt-1">
-                                            <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-3 py-2 rounded-xl font-medium border border-slate-200 transition flex items-center gap-1.5">
+                                            <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-3 py-2 rounded-xl font-medium border transition flex items-center gap-1.5">
                                                 📷 Прикрепить фото
                                                 <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setNewLostImage)} className="hidden" />
                                             </label>
-                                            {newLostImage && <span className="text-[11px] text-emerald-600 font-medium">✓ Фото готово и сжато</span>}
+                                            {newLostImage && <span className="text-[11px] text-emerald-600 font-medium">✓ Фото готово</span>}
                                         </div>
-
                                         <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-2.5 rounded-xl shadow-sm transition">
                                             Опубликовать
                                         </button>
@@ -337,7 +481,6 @@
                                     ) : (
                                         lostItems.map(item => (
                                             <div key={item.firebaseId} className="bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-sm space-y-2">
-                                                {/* Изображение отображается полностью без обрезки */}
                                                 {item.imageUrl && (
                                                     <div className="w-full bg-slate-900 rounded-xl overflow-hidden flex items-center justify-center">
                                                         <img src={item.imageUrl} alt="Фото" className="w-full h-auto object-contain max-h-[350px]" />
@@ -350,9 +493,9 @@
                                                 {item.desc && <p className="text-xs text-slate-600">{item.desc}</p>}
                                                 <div className="flex justify-between items-center pt-2 border-t border-slate-100">
                                                     <span className="text-[10px] text-slate-400">{item.author}</span>
-                                                    <div className="flex gap-1.5">
+                                                    <div className="flex gap-1.5 items-center">
                                                         <button 
-                                                            onClick={() => openTelegramChat(item.authorUsername, item.authorTgId)}
+                                                            onClick={() => openTelegramChat(item.authorUsername, item.authorTgId, item.title, 'Потеряшка')}
                                                             className="bg-sky-50 text-sky-600 hover:bg-sky-100 text-[11px] px-2.5 py-1 rounded-lg font-medium transition">
                                                             Написать
                                                         </button>
@@ -361,6 +504,13 @@
                                                                 onClick={() => removeLostItem(item.firebaseId)}
                                                                 className="bg-rose-50 text-rose-600 hover:bg-rose-100 text-[11px] px-2.5 py-1 rounded-lg font-medium transition">
                                                                 Удалить
+                                                            </button>
+                                                        )}
+                                                        {isAdmin() && item.authorUsername && item.authorUsername.toLowerCase() !== ROOT_ADMIN.toLowerCase() && (
+                                                            <button 
+                                                                onClick={() => banUser(item.authorUsername)}
+                                                                className="bg-slate-100 text-slate-600 hover:bg-rose-100 hover:text-rose-600 text-[11px] px-2 py-1 rounded-lg font-medium transition" title="Забанить автора">
+                                                                🔨
                                                             </button>
                                                         )}
                                                     </div>
@@ -376,21 +526,21 @@
                         {activeTab === 'library' && (
                             <div className="space-y-3">
                                 <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider px-1">Библиотека</h2>
-                                {currentUser && (
+                                {currentUser && !isBanned() && (
                                     <form onSubmit={addBook} className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-2.5">
                                         <input 
                                             type="text" 
                                             placeholder="Название книги" 
                                             value={newBookTitle}
                                             onChange={(e) => setNewBookTitle(e.target.value)}
-                                            className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500 text-slate-800 placeholder-slate-400"
+                                            className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500 text-slate-800"
                                         />
                                         <input 
                                             type="text" 
                                             placeholder="Автор" 
                                             value={newBookAuthor}
                                             onChange={(e) => setNewBookAuthor(e.target.value)}
-                                            className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500 text-slate-800 placeholder-slate-400"
+                                            className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500 text-slate-800"
                                         />
                                         <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-2.5 rounded-xl shadow-sm transition">
                                             Добавить книгу
@@ -405,11 +555,11 @@
                                             <div key={b.firebaseId} className="p-3.5 rounded-2xl border border-slate-200/80 bg-white shadow-sm flex justify-between items-center">
                                                 <div>
                                                     <h3 className="font-semibold text-slate-900 text-xs">{b.title}</h3>
-                                                    <p className="text-[11px] text-slate-500 mt-0.5">{b.author} • <span className="text-blue-600 font-medium">У: {b.holder}</span></p>
+                                                    <p className="text-[11px] text-slate-500 mt-0.5">{b.author} • <span className="text-blue-600 font-medium">{b.classStr}</span></p>
                                                 </div>
-                                                <div className="flex gap-1.5">
+                                                <div className="flex gap-1.5 items-center">
                                                     <button 
-                                                        onClick={() => openTelegramChat(b.holderUsername, b.holderTgId)}
+                                                        onClick={() => openTelegramChat(b.holderUsername, b.holderTgId, b.title, 'Книга')}
                                                         className="bg-sky-50 text-sky-600 text-[11px] px-2.5 py-1.5 rounded-lg font-medium">
                                                         Взять
                                                     </button>
@@ -418,6 +568,13 @@
                                                             onClick={() => removeBook(b.firebaseId)}
                                                             className="bg-rose-50 text-rose-600 text-[11px] px-2.5 py-1.5 rounded-lg font-medium">
                                                             Удалить
+                                                        </button>
+                                                    )}
+                                                    {isAdmin() && b.holderUsername && b.holderUsername.toLowerCase() !== ROOT_ADMIN.toLowerCase() && (
+                                                        <button 
+                                                            onClick={() => banUser(b.holderUsername)}
+                                                            className="bg-slate-100 text-slate-600 hover:bg-rose-100 hover:text-rose-600 text-[11px] px-2 py-1 rounded-lg transition" title="Забанить автора">
+                                                            🔨
                                                         </button>
                                                     )}
                                                 </div>
@@ -432,23 +589,21 @@
                         {activeTab === 'hub' && (
                             <div className="space-y-3">
                                 <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider px-1">Лента Лицея</h2>
-                                {currentUser && (
+                                {currentUser && !isBanned() && (
                                     <form onSubmit={addPost} className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-2.5">
                                         <textarea 
                                             placeholder="Поделитесь новостью..." 
                                             value={newPostText}
                                             onChange={(e) => setNewPostText(e.target.value)}
-                                            className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500 text-slate-800 placeholder-slate-400 resize-none h-16"
+                                            className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500 text-slate-800 resize-none h-16"
                                         />
-                                        
                                         <div className="flex items-center gap-2 pt-1">
-                                            <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-3 py-2 rounded-xl font-medium border border-slate-200 transition flex items-center gap-1.5">
+                                            <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-3 py-2 rounded-xl font-medium border transition flex items-center gap-1.5">
                                                 📷 Прикрепить фото
                                                 <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setNewPostImage)} className="hidden" />
                                             </label>
-                                            {newPostImage && <span className="text-[11px] text-emerald-600 font-medium">✓ Фото готово и сжато</span>}
+                                            {newPostImage && <span className="text-[11px] text-emerald-600 font-medium">✓ Фото готово</span>}
                                         </div>
-
                                         <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-2.5 rounded-xl shadow-sm transition">
                                             Опубликовать пост
                                         </button>
@@ -475,26 +630,34 @@
 
                                                 <p className="text-xs text-slate-700 leading-relaxed">{p.text}</p>
 
-                                                {/* Изображение отображается полностью без обрезки */}
                                                 {p.imageUrl && (
                                                     <div className="w-full bg-slate-900 rounded-xl overflow-hidden flex items-center justify-center">
-                                                        <img src={p.imageUrl} alt="Фото поста" className="w-full h-auto object-contain max-h-[350px]" />
+                                                        <img src={p.imageUrl} alt="Фото" className="w-full h-auto object-contain max-h-[350px]" />
                                                     </div>
                                                 )}
 
                                                 <div className="flex justify-between items-center pt-2 border-t border-slate-100">
                                                     <button 
-                                                        onClick={() => openTelegramChat(p.authorUsername, p.authorTgId)}
+                                                        onClick={() => openTelegramChat(p.authorUsername, p.authorTgId, p.text.substring(0, 20) + '...', 'Пост в ленте')}
                                                         className="text-[11px] text-blue-600 font-semibold hover:underline">
                                                         Написать автору
                                                     </button>
-                                                    {canDelete(p.authorUsername, p.authorTgId) && (
-                                                        <button 
-                                                            onClick={() => removePost(p.firebaseId)}
-                                                            className="text-[11px] text-rose-500 font-semibold hover:underline">
-                                                            Удалить
-                                                        </button>
-                                                    )}
+                                                    <div className="flex gap-2 items-center">
+                                                        {canDelete(p.authorUsername, p.authorTgId) && (
+                                                            <button 
+                                                                onClick={() => removePost(p.firebaseId)}
+                                                                className="text-[11px] text-rose-500 font-semibold hover:underline">
+                                                                Удалить
+                                                            </button>
+                                                        )}
+                                                        {isAdmin() && p.authorUsername && p.authorUsername.toLowerCase() !== ROOT_ADMIN.toLowerCase() && (
+                                                            <button 
+                                                                onClick={() => banUser(p.authorUsername)}
+                                                                className="bg-slate-100 text-slate-600 hover:bg-rose-100 hover:text-rose-600 text-[11px] px-2 py-0.5 rounded-md transition" title="Забанить автора">
+                                                                🔨
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         ))
@@ -508,8 +671,8 @@
                     {showAuthModal && (
                         <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                             <div className="bg-white border border-slate-200 rounded-3xl p-5 w-full max-w-xs space-y-3.5 shadow-xl">
-                                <h3 className="font-bold text-slate-900 text-center text-sm">Вход в профиль</h3>
-                                <form onSubmit={handleLogin} className="space-y-3">
+                                <h3 className="font-bold text-slate-900 text-center text-sm">Вход в Лицейский Хаб</h3>
+                                <form onSubmit={handleSaveProfile} className="space-y-3">
                                     <div>
                                         <label className="text-[11px] text-slate-500 font-medium block mb-1">Имя и фамилия</label>
                                         <input 
@@ -531,6 +694,34 @@
                                             className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500 text-slate-800"
                                         />
                                     </div>
+                                    <div className="flex gap-2">
+                                        <div className="flex-1">
+                                            <label className="text-[11px] text-slate-500 font-medium block mb-1">Параллель</label>
+                                            <select 
+                                                value={authGrade} 
+                                                onChange={(e) => setAuthGrade(e.target.value)}
+                                                className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                                                <option value="7">7</option>
+                                                <option value="8">8</option>
+                                                <option value="9">9</option>
+                                                <option value="10">10</option>
+                                                <option value="11">11</option>
+                                            </select>
+                                        </div>
+                                        <div className="flex-1">
+                                            <label className="text-[11px] text-slate-500 font-medium block mb-1">Буква</label>
+                                            <select 
+                                                value={authLetter} 
+                                                onChange={(e) => setAuthLetter(e.target.value)}
+                                                className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                                                <option value="А">А</option>
+                                                <option value="Б">Б</option>
+                                                <option value="В">В</option>
+                                                <option value="Г">Г</option>
+                                                <option value="Д">Д</option>
+                                            </select>
+                                        </div>
+                                    </div>
                                     <div className="pt-1 flex gap-2">
                                         <button 
                                             type="button" 
@@ -542,6 +733,77 @@
                                             type="submit" 
                                             className="flex-1 bg-blue-600 text-white text-xs font-semibold py-2.5 rounded-xl hover:bg-blue-700 transition">
                                             Сохранить
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Модальное окно редактирования профиля */}
+                    {showProfileModal && (
+                        <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                            <div className="bg-white border border-slate-200 rounded-3xl p-5 w-full max-w-xs space-y-3.5 shadow-xl">
+                                <h3 className="font-bold text-slate-900 text-center text-sm">Настройки профиля</h3>
+                                <form onSubmit={handleSaveProfile} className="space-y-3">
+                                    <div>
+                                        <label className="text-[11px] text-slate-500 font-medium block mb-1">Имя и фамилия</label>
+                                        <input 
+                                            type="text" 
+                                            value={authName}
+                                            onChange={(e) => setAuthName(e.target.value)}
+                                            className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[11px] text-slate-500 font-medium block mb-1">Telegram @username</label>
+                                        <input 
+                                            type="text" 
+                                            value={authUsername}
+                                            onChange={(e) => setAuthUsername(e.target.value)}
+                                            className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800"
+                                        />
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <div className="flex-1">
+                                            <label className="text-[11px] text-slate-500 font-medium block mb-1">Параллель</label>
+                                            <select 
+                                                value={authGrade} 
+                                                onChange={(e) => setAuthGrade(e.target.value)}
+                                                className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                                                <option value="7">7</option>
+                                                <option value="8">8</option>
+                                                <option value="9">9</option>
+                                                <option value="10">10</option>
+                                                <option value="11">11</option>
+                                            </select>
+                                        </div>
+                                        <div className="flex-1">
+                                            <label className="text-[11px] text-slate-500 font-medium block mb-1">Буква</label>
+                                            <select 
+                                                value={authLetter} 
+                                                onChange={(e) => setAuthLetter(e.target.value)}
+                                                className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                                                <option value="А">А</option>
+                                                <option value="Б">Б</option>
+                                                <option value="В">В</option>
+                                                <option value="Г">Г</option>
+                                                <option value="Д">Д</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div className="pt-1 flex gap-2">
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setShowProfileModal(false)}
+                                            className="flex-1 bg-slate-100 text-slate-600 text-xs font-semibold py-2.5 rounded-xl hover:bg-slate-200 transition">
+                                            Отмена
+                                        </button>
+                                        <button 
+                                            type="submit" 
+                                            className="flex-1 bg-blue-600 text-white text-xs font-semibold py-2.5 rounded-xl hover:bg-blue-700 transition">
+                                            Обновить
                                         </button>
                                     </div>
                                 </form>
