@@ -9,23 +9,38 @@
     <!-- React & ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel -->
+    <!-- Babel для JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <!-- Telegram Web App SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-    </style>
+
+    <!-- Firebase SDKs (v9 Compat) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
 </head>
 <body class="bg-slate-50 text-slate-800">
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        // Твоя конфигурация Firebase
+        const firebaseConfig = { 
+            apiKey: "AIzaSyDNaWJbKE6Wvj_gGnNAre5v0PCaxSmVXOo", 
+            authDomain: "lyceum31.firebaseapp.com", 
+            databaseURL: "https://lyceum31-default-rtdb.firebaseio.com", 
+            projectId: "lyceum31", 
+            storageBucket: "lyceum31.firebasestorage.app", 
+            messagingSenderId: "309039351893", 
+            appId: "1:309039351893:web:4f969add85f92325406cdc", 
+            measurementId: "G-5KE6VEHLC9" 
+        };
 
-        // Бесплатный API ключ хранилища для синхронизации всех телефонов
-        const BIN_ID = "65f01234a311100123456789"; // Хранилище
-        const API_URL = "https://api.jsonbin.io/v3/b";
+        // Инициализация Firebase
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.database();
+
+        const { useState, useEffect } = React;
 
         function App() {
             const [activeTab, setActiveTab] = useState('lost-found');
@@ -46,7 +61,7 @@
             const [newBookAuthor, setNewBookAuthor] = useState('');
             const [newPostText, setNewPostText] = useState('');
 
-            // 1. Инициализация Telegram WebApp
+            // Авторизация через Telegram WebApp
             useEffect(() => {
                 if (window.Telegram && window.Telegram.WebApp) {
                     const tg = window.Telegram.WebApp;
@@ -67,27 +82,52 @@
                         });
                     }
                 }
-
-                // Загрузка сохраненных объявлений из общего хранилища (localStorage fallback)
-                const savedLost = localStorage.getItem('hub_shared_lost');
-                if (savedLost) setLostItems(JSON.parse(savedLost));
-                
-                const savedBooks = localStorage.getItem('hub_shared_books');
-                if (savedBooks) setBooks(JSON.parse(savedBooks));
-
-                const savedPosts = localStorage.getItem('hub_shared_posts');
-                if (savedPosts) setPosts(JSON.parse(savedPosts));
             }, []);
 
-            // Синхронизация данных
-            const syncData = (key, data) => {
-                localStorage.setItem(key, JSON.stringify(data));
-            };
+            // Живая синхронизация с Firebase Realtime Database
+            useEffect(() => {
+                const lostRef = db.ref('lost_items');
+                lostRef.on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        const list = Object.keys(data).map(key => ({ firebaseId: key, ...data[key] }));
+                        setLostItems(list.reverse());
+                    } else {
+                        setLostItems([]);
+                    }
+                });
 
-            const getAvailableLetters = (grade) => {
-                const g = parseInt(grade);
-                if (g >= 10) return ['А', 'Б', 'В'];
-                return ['А', 'Б', 'В', 'Г'];
+                const booksRef = db.ref('books');
+                booksRef.on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        const list = Object.keys(data).map(key => ({ firebaseId: key, ...data[key] }));
+                        setBooks(list.reverse());
+                    } else {
+                        setBooks([]);
+                    }
+                });
+
+                const postsRef = db.ref('posts');
+                postsRef.on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        const list = Object.keys(data).map(key => ({ firebaseId: key, ...data[key] }));
+                        setPosts(list.reverse());
+                    } else {
+                        setPosts([]);
+                    }
+                });
+            }, []);
+
+            const openTelegramChat = (username, tgId) => {
+                if (username) {
+                    window.open(`https://t.me/${username}`, '_blank');
+                } else if (tgId) {
+                    window.open(`tg://user?id=${tgId}`, '_blank');
+                } else {
+                    alert("У пользователя не указан username в Telegram");
+                }
             };
 
             const handleLogin = (e) => {
@@ -104,20 +144,12 @@
                 setShowAuthModal(false);
             };
 
-            const openTelegramChat = (username, tgId) => {
-                if (username) {
-                    window.open(`https://t.me/${username}`, '_blank');
-                } else if (tgId) {
-                    window.open(`tg://user?id=${tgId}`, '_blank');
-                } else {
-                    alert("У пользователя не указан username в Telegram");
-                }
-            };
-
+            // Функции добавления в базу данных
             const addLostItem = (e) => {
                 e.preventDefault();
-                if (!newLostTitle.trim()) return;
-                const newItem = {
+                if (!newLostTitle.trim() || !currentUser) return;
+                
+                db.ref('lost_items').push({
                     id: Date.now(),
                     title: newLostTitle,
                     desc: newLostDesc,
@@ -126,24 +158,21 @@
                     authorTgId: currentUser.tgId,
                     classStr: `${currentUser.grade}-${currentUser.letter}`,
                     date: new Date().toLocaleDateString()
-                };
-                const updated = [newItem, ...lostItems];
-                setLostItems(updated);
-                syncData('hub_shared_lost', updated);
+                });
+
                 setNewLostTitle('');
                 setNewLostDesc('');
             };
 
-            const confirmLostItem = (id) => {
-                const updated = lostItems.filter(item => item.id !== id);
-                setLostItems(updated);
-                syncData('hub_shared_lost', updated);
+            const removeLostItem = (firebaseId) => {
+                db.ref(`lost_items/${firebaseId}`).remove();
             };
 
             const addBook = (e) => {
                 e.preventDefault();
-                if (!newBookTitle.trim()) return;
-                const newB = {
+                if (!newBookTitle.trim() || !currentUser) return;
+
+                db.ref('books').push({
                     id: Date.now(),
                     title: newBookTitle,
                     author: newBookAuthor || 'Не указан',
@@ -151,18 +180,17 @@
                     holderUsername: currentUser.username,
                     holderTgId: currentUser.tgId,
                     status: 'Доступна'
-                };
-                const updated = [newB, ...books];
-                setBooks(updated);
-                syncData('hub_shared_books', updated);
+                });
+
                 setNewBookTitle('');
                 setNewBookAuthor('');
             };
 
             const addPost = (e) => {
                 e.preventDefault();
-                if (!newPostText.trim()) return;
-                const newP = {
+                if (!newPostText.trim() || !currentUser) return;
+
+                db.ref('posts').push({
                     id: Date.now(),
                     text: newPostText,
                     author: currentUser.name,
@@ -170,16 +198,13 @@
                     authorTgId: currentUser.tgId,
                     classStr: `${currentUser.grade}-${currentUser.letter}`,
                     date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                };
-                const updated = [newP, ...posts];
-                setPosts(updated);
-                syncData('hub_shared_posts', updated);
+                });
+
                 setNewPostText('');
             };
 
             return (
                 <div className="min-h-screen flex flex-col max-w-md mx-auto bg-white shadow-xl relative pb-20">
-                    {/* Шапка */}
                     <header className="p-4 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-10">
                         <div className="flex items-center space-x-3">
                             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-lg shadow-md shadow-blue-200">
@@ -211,7 +236,6 @@
                         </div>
                     </header>
 
-                    {/* Содержимое */}
                     <main className="flex-1 p-4 overflow-y-auto">
                         {activeTab === 'lost-found' && (
                             <div className="space-y-4">
@@ -241,217 +265,3 @@
 
                                 <div className="space-y-3">
                                     {lostItems.length === 0 ? (
-                                        <p className="text-center text-slate-400 text-sm py-8">Пока нет объявлений о потерянных вещах.</p>
-                                    ) : (
-                                        lostItems.map(item => (
-                                            <div key={item.id} className="p-4 rounded-2xl border border-slate-100 bg-white shadow-sm space-y-2">
-                                                <div className="flex justify-between items-start">
-                                                    <h3 className="font-semibold text-slate-800 text-sm">{item.title}</h3>
-                                                    <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-medium">{item.classStr}</span>
-                                                </div>
-                                                <p className="text-xs text-slate-600">{item.desc}</p>
-                                                <div className="flex justify-between items-center pt-2 border-t border-slate-50 gap-2">
-                                                    <span className="text-[10px] text-slate-400">{item.author}</span>
-                                                    
-                                                    <div className="flex gap-2">
-                                                        <button 
-                                                            onClick={() => openTelegramChat(item.authorUsername, item.authorTgId)}
-                                                            className="bg-sky-50 text-sky-600 hover:bg-sky-100 text-xs px-3 py-1.5 rounded-xl font-medium transition flex items-center gap-1">
-                                                            ✈️ Написать
-                                                        </button>
-                                                        {currentUser && currentUser.name === item.author && (
-                                                            <button 
-                                                                onClick={() => confirmLostItem(item.id)}
-                                                                className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 text-xs px-3 py-1.5 rounded-xl font-medium transition">
-                                                                Удалить
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
-                        {activeTab === 'library' && (
-                            <div className="space-y-4">
-                                <h2 className="text-lg font-bold text-slate-800">Библиотека</h2>
-                                {currentUser && (
-                                    <form onSubmit={addBook} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 space-y-2">
-                                        <input 
-                                            type="text" 
-                                            placeholder="Название книги" 
-                                            value={newBookTitle}
-                                            onChange={(e) => setNewBookTitle(e.target.value)}
-                                            className="w-full text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white"
-                                        />
-                                        <input 
-                                            type="text" 
-                                            placeholder="Автор" 
-                                            value={newBookAuthor}
-                                            onChange={(e) => setNewBookAuthor(e.target.value)}
-                                            className="w-full text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white"
-                                        />
-                                        <button type="submit" className="w-full bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl shadow-sm hover:bg-blue-700 transition">
-                                            Добавить книгу
-                                        </button>
-                                    </form>
-                                )}
-                                <div className="space-y-3">
-                                    {books.length === 0 ? (
-                                        <p className="text-center text-slate-400 text-sm py-8">Библиотека пока пуста.</p>
-                                    ) : (
-                                        books.map(b => (
-                                            <div key={b.id} className="p-3 rounded-2xl border border-slate-100 bg-white shadow-sm flex justify-between items-center">
-                                                <div>
-                                                    <h3 className="font-semibold text-slate-800 text-sm">{b.title}</h3>
-                                                    <p className="text-xs text-slate-500">{b.author} • {b.holder}</p>
-                                                </div>
-                                                <button 
-                                                    onClick={() => openTelegramChat(b.holderUsername, b.holderTgId)}
-                                                    className="bg-sky-50 text-sky-600 text-xs px-3 py-1.5 rounded-xl font-medium">
-                                                    Взять
-                                                </button>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
-                        {activeTab === 'hub' && (
-                            <div className="space-y-4">
-                                <h2 className="text-lg font-bold text-slate-800">Лента лицея</h2>
-                                {currentUser && (
-                                    <form onSubmit={addPost} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 space-y-2">
-                                        <textarea 
-                                            placeholder="Поделитесь новостью..." 
-                                            value={newPostText}
-                                            onChange={(e) => setNewPostText(e.target.value)}
-                                            className="w-full text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white resize-none h-20"
-                                        />
-                                        <button type="submit" className="w-full bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl shadow-sm hover:bg-blue-700 transition">
-                                            Опубликовать пост
-                                        </button>
-                                    </form>
-                                )}
-                                <div className="space-y-3">
-                                    {posts.length === 0 ? (
-                                        <p className="text-center text-slate-400 text-sm py-8">Лента новостей пока пуста.</p>
-                                    ) : (
-                                        posts.map(p => (
-                                            <div key={p.id} className="p-4 rounded-2xl border border-slate-100 bg-white shadow-sm space-y-2">
-                                                <div className="flex justify-between items-center">
-                                                    <span className="text-xs font-semibold text-slate-800">{p.author} ({p.classStr})</span>
-                                                    <button 
-                                                        onClick={() => openTelegramChat(p.authorUsername, p.authorTgId)}
-                                                        className="text-xs text-sky-600 hover:underline">
-                                                        Написать
-                                                    </button>
-                                                </div>
-                                                <p className="text-xs text-slate-600">{p.text}</p>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                    </main>
-
-                    {/* Авторизация */}
-                    {showAuthModal && (
-                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                            <div className="bg-white rounded-3xl p-6 w-full max-w-xs space-y-4 shadow-xl">
-                                <h3 className="font-bold text-slate-900 text-center text-base">Профиль</h3>
-                                <form onSubmit={handleLogin} className="space-y-3">
-                                    <div>
-                                        <label className="text-xs text-slate-500 block mb-1">Имя</label>
-                                        <input 
-                                            type="text" 
-                                            placeholder="Иван" 
-                                            value={authName}
-                                            onChange={(e) => setAuthName(e.target.value)}
-                                            className="w-full text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white"
-                                            required
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs text-slate-500 block mb-1">Telegram @username</label>
-                                        <input 
-                                            type="text" 
-                                            placeholder="username" 
-                                            value={authUsername}
-                                            onChange={(e) => setAuthUsername(e.target.value)}
-                                            className="w-full text-sm p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 bg-white"
-                                        />
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <div className="flex-1">
-                                            <label className="text-xs text-slate-500 block mb-1">Класс</label>
-                                            <select 
-                                                value={authGrade} 
-                                                onChange={(e) => setAuthGrade(e.target.value)}
-                                                className="w-full text-sm p-2.5 rounded-xl border border-slate-200 bg-white">
-                                                {[5, 6, 7, 8, 9, 10, 11].map(g => (
-                                                    <option key={g} value={g}>{g}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div className="flex-1">
-                                            <label className="text-xs text-slate-500 block mb-1">Буква</label>
-                                            <select 
-                                                value={authLetter} 
-                                                onChange={(e) => setAuthLetter(e.target.value)}
-                                                className="w-full text-sm p-2.5 rounded-xl border border-slate-200 bg-white">
-                                                {getAvailableLetters(authGrade).map(l => (
-                                                    <option key={l} value={l}>{l}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div className="pt-2 flex gap-2">
-                                        <button 
-                                            type="button" 
-                                            onClick={() => setShowAuthModal(false)}
-                                            className="flex-1 bg-slate-100 text-slate-600 text-sm font-semibold py-2.5 rounded-xl">
-                                            Отмена
-                                        </button>
-                                        <button 
-                                            type="submit" 
-                                            className="flex-1 bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl">
-                                            Сохранить
-                                        </button>
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Навигация */}
-                    <nav className="absolute bottom-0 left-0 right-0 bg-white border-t border-slate-100 px-4 py-3 flex justify-around z-10">
-                        <button 
-                            onClick={() => setActiveTab('lost-found')}
-                            className={`flex flex-col items-center text-xs font-medium ${activeTab === 'lost-found' ? 'text-blue-600 font-bold' : 'text-slate-400'}`}>
-                            <span>Потеряшки</span>
-                        </button>
-                        <button 
-                            onClick={() => setActiveTab('library')}
-                            className={`flex flex-col items-center text-xs font-medium ${activeTab === 'library' ? 'text-blue-600 font-bold' : 'text-slate-400'}`}>
-                            <span>Библиотека</span>
-                        </button>
-                        <button 
-                            onClick={() => setActiveTab('hub')}
-                            className={`flex flex-col items-center text-xs font-medium ${activeTab === 'hub' ? 'text-blue-600 font-bold' : 'text-slate-400'}`}>
-                            <span>Лента</span>
-                        </button>
-                    </nav>
-                </div>
-            );
-        }
-
-        ReactDOM.render(<App />, document.getElementById('root'));
-    </script>
-</body>
-</html>
