@@ -53,6 +53,16 @@
             const [showAuthModal, setShowAuthModal] = useState(false);
             const [showProfileModal, setShowProfileModal] = useState(false);
             
+            // Кастомное внутреннее уведомление вместо alert()
+            const [toastMessage, setToastMessage] = useState(null);
+
+            const showNotification = (text) => {
+                setToastMessage(text);
+                setTimeout(() => {
+                    setToastMessage(null);
+                }, 3000);
+            };
+            
             const [editingItem, setEditingItem] = useState(null); 
             const [editTitle, setEditTitle] = useState('');
             const [editDesc, setEditDesc] = useState('');
@@ -161,34 +171,36 @@
                 if (!username) return;
                 const cleanTag = username.replace('@', '').toLowerCase();
                 db.ref(`admin_users/${cleanTag}`).set(true);
-                alert(`Пользователь @${cleanTag} назначен администратором!`);
+                showNotification(`Пользователь @${cleanTag} назначен администратором!`);
             };
 
             const removeAdmin = (username) => {
                 if (username.toLowerCase() === ROOT_ADMIN.toLowerCase()) {
-                    alert("Нельзя удалить главного администратора!");
+                    showNotification("Нельзя удалить главного администратора!");
                     return;
                 }
                 db.ref(`admin_users/${username}`).remove();
+                showNotification(`Администратор @${username} удален.`);
             };
 
             const banUserByAdmin = (username) => {
                 if (!username) return;
                 const cleanTag = username.replace('@', '').toLowerCase();
-                if (cleanTag === ROOT_ADMIN.toLowerCase()) { alert("Нельзя забанить главного администратора!"); return; }
+                if (cleanTag === ROOT_ADMIN.toLowerCase()) { showNotification("Нельзя забанить главного администратора!"); return; }
                 db.ref(`banned_users/${cleanTag}`).set(true);
-                alert(`Пользователь @${cleanTag} забанен.`);
+                showNotification(`Пользователь @${cleanTag} забанен.`);
             };
 
             const unbanUser = (username) => {
                 db.ref(`banned_users/${username}`).remove();
+                showNotification(`Пользователь @${username} разбанен.`);
             };
 
             // Обработка сохранения профиля
             const handleSaveProfile = (e) => {
                 e.preventDefault();
                 if (!authName.trim() || !authGrade || !authLetter) {
-                    alert("Пожалуйста, заполните все поля, включая класс и букву.");
+                    showNotification("Пожалуйста, заполните все поля, включая класс и букву.");
                     return;
                 }
                 const cleanTag = authUsername.replace('@', '').trim().toLowerCase();
@@ -201,25 +213,23 @@
                     tgId: currentUser ? currentUser.tgId : Date.now()
                 };
 
-                // Если это первый вход (класс еще не был указан) или пользователь — администратор: сохраняем сразу
                 if (!currentUser || !currentUser.grade || isAdmin()) {
                     setCurrentUser(newProfileData);
                     localStorage.setItem('lyceum_user', JSON.stringify(newProfileData));
                     setShowAuthModal(false);
                     setShowProfileModal(false);
                     if (isAdmin() && currentUser && currentUser.grade) {
-                        alert("Профиль успешно изменен!");
+                        showNotification("Профиль успешно изменен!");
                     }
                     return;
                 }
 
-                // Для обычных пользователей: формируем ссылку на отправку разрешения админу
                 const requestText = `Здравствуйте! Прошу подтвердить изменение моих данных в Лицейском Хабе:\nИмя: ${newProfileData.name}\nUsername: @${newProfileData.username || 'нет'}\nКласс: ${newProfileData.grade}-${newProfileData.letter}`;
                 const encoded = encodeURIComponent(requestText);
                 
-                // Открываем чат с главным администратором
                 window.open(`https://t.me/${ROOT_ADMIN}?text=${encoded}`, '_blank');
                 setShowProfileModal(false);
+                showNotification("Запрос отправлен администратору в Telegram");
             };
 
             const canDeleteOrEdit = (itemAuthorUsername, itemAuthorTgId) => {
@@ -251,6 +261,7 @@
                 }
 
                 setEditingItem(null);
+                showNotification("Запись успешно обновлена!");
             };
 
             const openTelegramChat = (username, tgId, itemTitle, itemType) => {
@@ -262,7 +273,7 @@
                 } else if (tgId) {
                     window.open(`tg://user?id=${tgId}`, '_blank');
                 } else {
-                    alert("У пользователя не указан username в Telegram");
+                    showNotification("У пользователя не указан username в Telegram");
                 }
             };
 
@@ -317,8 +328,8 @@
 
             const addLostItem = (e) => {
                 e.preventDefault();
-                if (!hasClass()) { alert("Укажите свой класс в профиле."); setShowProfileModal(true); return; }
-                if (isBanned()) { alert("Вы забанены."); return; }
+                if (!hasClass()) { showNotification("Укажите свой класс в профиле."); setShowProfileModal(true); return; }
+                if (isBanned()) { showNotification("Вы забанены."); return; }
                 if (!newLostTitle.trim() || !currentUser) return;
                 
                 db.ref('lost_items').push({
@@ -335,14 +346,18 @@
                 setNewLostTitle('');
                 setNewLostDesc('');
                 setNewLostImage('');
+                showNotification("Объявление опубликовано!");
             };
 
-            const removeLostItem = (firebaseId) => db.ref(`lost_items/${firebaseId}`).remove();
+            const removeLostItem = (firebaseId) => {
+                db.ref(`lost_items/${firebaseId}`).remove();
+                showNotification("Объявление удалено.");
+            };
 
             const addPost = (e) => {
                 e.preventDefault();
-                if (!hasClass()) { alert("Укажите свой класс в профиле."); setShowProfileModal(true); return; }
-                if (isBanned()) { alert("Вы забанены."); return; }
+                if (!hasClass()) { showNotification("Укажите свой класс в профиле."); setShowProfileModal(true); return; }
+                if (isBanned()) { showNotification("Вы забанены."); return; }
                 if (!newPostText.trim() || !currentUser) return;
 
                 db.ref('posts').push({
@@ -357,14 +372,18 @@
 
                 setNewPostText('');
                 setNewPostImage('');
+                showNotification("Пост опубликован в ленте!");
             };
 
-            const removePost = (firebaseId) => db.ref(`posts/${firebaseId}`).remove();
+            const removePost = (firebaseId) => {
+                db.ref(`posts/${firebaseId}`).remove();
+                showNotification("Пост удален.");
+            };
 
             const addComment = (postId, e) => {
                 e.preventDefault();
-                if (!hasClass()) { alert("Укажите свой класс в профиле."); setShowProfileModal(true); return; }
-                if (isBanned()) { alert("Вы забанены."); return; }
+                if (!hasClass()) { showNotification("Укажите свой класс в профиле."); setShowProfileModal(true); return; }
+                if (isBanned()) { showNotification("Вы забанены."); return; }
                 const text = commentTexts[postId];
                 if (!text || !text.trim()) return;
 
@@ -385,6 +404,13 @@
             return (
                 <div className="flex flex-col h-full bg-slate-50 text-slate-800 relative overflow-hidden">
                     
+                    {/* Кастомное уведомление (Тост) вместо alert */}
+                    {toastMessage && (
+                        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-xs px-4 py-2.5 rounded-2xl shadow-xl transition animate-bounce">
+                            {toastMessage}
+                        </div>
+                    )}
+
                     {/* Шапка */}
                     <header className="px-4 py-3 bg-white/80 backdrop-blur-md border-b border-slate-200/80 flex items-center justify-between sticky top-0 z-20">
                         <div className="flex items-center space-x-2.5">
