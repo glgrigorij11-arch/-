@@ -484,7 +484,8 @@
                        (p.classStr && p.classStr.toLowerCase().includes(q));
             });
 
-            const themeClass = darkMode ? "bg-slate-900 text-slate-100" : "bg-gradient-to-b from-slate-50 via-white to-blue-50/20 text-slate-800";
+            // Убран градиент из светлой темы, теперь чистый фон
+            const themeClass = darkMode ? "bg-slate-900 text-slate-100" : "bg-slate-50 text-slate-800";
             const headerClass = darkMode ? "bg-slate-900/80 border-slate-800 text-white" : "bg-white/80 border-slate-200/80 text-slate-900";
             const cardClass = darkMode ? "bg-slate-800/80 border-slate-700/60 shadow-lg text-slate-100" : "bg-white/90 border-slate-200/70 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.03)] text-slate-800";
             const inputClass = darkMode ? "bg-slate-900 border-slate-700 text-white placeholder-slate-500" : "bg-slate-50 border-slate-200/80 text-slate-800 placeholder-slate-400";
