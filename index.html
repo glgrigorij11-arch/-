@@ -484,7 +484,6 @@
                        (p.classStr && p.classStr.toLowerCase().includes(q));
             });
 
-            // Убран градиент из светлой темы, теперь чистый фон
             const themeClass = darkMode ? "bg-slate-900 text-slate-100" : "bg-slate-50 text-slate-800";
             const headerClass = darkMode ? "bg-slate-900/80 border-slate-800 text-white" : "bg-white/80 border-slate-200/80 text-slate-900";
             const cardClass = darkMode ? "bg-slate-800/80 border-slate-700/60 shadow-lg text-slate-100" : "bg-white/90 border-slate-200/70 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.03)] text-slate-800";
@@ -666,7 +665,7 @@
                                 <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Бюро Потеряшек</h2>
 
                                 {currentUser && hasClass() && !isBanned() && (
-                                    <form onSubmit={addLostItem} className={`p-4 rounded-[24px] border shadow-sm space-y-3 ${cardClass}`}>
+                                    <div className={`p-4 rounded-[24px] border shadow-sm space-y-3 ${cardClass}`}>
                                         <input 
                                             type="text" 
                                             placeholder="Что потерялось или нашлось? *" 
@@ -692,10 +691,13 @@
                                                 </div>
                                             )}
                                         </div>
-                                        <button type="submit" className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-semibold py-3 rounded-xl shadow-[0_4px_15px_rgba(37,99,235,0.3)] transition-all">
+                                        <button 
+                                            type="button" 
+                                            onClick={addLostItem}
+                                            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-semibold py-3 rounded-xl shadow-[0_4px_15px_rgba(37,99,235,0.3)] transition-all">
                                             Опубликовать
                                         </button>
-                                    </form>
+                                    </div>
                                 )}
 
                                 <div className="space-y-3">
@@ -772,7 +774,7 @@
                             <div key="hub" className="space-y-3.5 macos-tab-view">
                                 <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Лента Лицея</h2>
                                 {currentUser && hasClass() && !isBanned() && (
-                                    <form onSubmit={addPost} className={`p-4 rounded-[24px] border shadow-sm space-y-3 ${cardClass}`}>
+                                    <div className={`p-4 rounded-[24px] border shadow-sm space-y-3 ${cardClass}`}>
                                         <textarea 
                                             placeholder="Поделитесь новостью... *" 
                                             value={newPostText}
@@ -791,10 +793,13 @@
                                                 </div>
                                             )}
                                         </div>
-                                        <button type="submit" className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-semibold py-3 rounded-xl shadow-[0_4px_15px_rgba(37,99,235,0.3)] transition-all">
+                                        <button 
+                                            type="button" 
+                                            onClick={addPost}
+                                            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-semibold py-3 rounded-xl shadow-[0_4px_15px_rgba(37,99,235,0.3)] transition-all">
                                             Опубликовать пост
                                         </button>
-                                    </form>
+                                    </div>
                                 )}
                                 <div className="space-y-3.5">
                                     {filteredPosts.length === 0 ? (
