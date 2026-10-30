@@ -22,24 +22,24 @@
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
 
-        @keyframes macOSSlideIn {
-            0% { opacity: 0; transform: translateY(10px) scale(0.985); filter: blur(4px); }
+        @keyframes appleTabTransition {
+            0% { opacity: 0; transform: translateY(8px) scale(0.99); filter: blur(3px); }
             100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0px); }
         }
 
-        @keyframes macOSModal {
-            0% { opacity: 0; transform: scale(0.92) translateY(16px); }
+        @keyframes appleModalAnim {
+            0% { opacity: 0; transform: scale(0.94) translateY(12px); }
             100% { opacity: 1; transform: scale(1) translateY(0); }
         }
 
-        @keyframes macOSToast {
-            0% { opacity: 0; transform: translate(-50%, -16px) scale(0.94); }
+        @keyframes appleToastAnim {
+            0% { opacity: 0; transform: translate(-50%, -12px) scale(0.95); }
             100% { opacity: 1; transform: translate(-50%, 0) scale(1); }
         }
 
-        .macos-tab-view { animation: macOSSlideIn 0.38s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        .macos-modal-anim { animation: macOSModal 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        .macos-toast-anim { animation: macOSToast 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .apple-tab-view { animation: appleTabTransition 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .apple-modal-anim { animation: appleModalAnim 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .apple-toast-anim { animation: appleToastAnim 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
     </style>
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen flex justify-center items-center selection:bg-blue-500 selection:text-white">
@@ -94,11 +94,13 @@
             const [editDesc, setEditDesc] = useState('');
             const [editImage, setEditImage] = useState('');
 
-            const [authName, setAuthName] = useState('');
+            const [authFirstName, setAuthFirstName] = useState('');
+            const [authLastName, setAuthLastName] = useState('');
             const [authUsername, setAuthUsername] = useState('');
             const [authGrade, setAuthGrade] = useState('');
             const [authLetter, setAuthLetter] = useState('');
 
+            const [newAdminInput, setNewAdminInput] = useState('');
             const [commentTexts, setCommentTexts] = useState({});
             const [searchQuery, setSearchQuery] = useState('');
 
@@ -132,16 +134,15 @@
 
                     if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
                         const tgUser = tg.initDataUnsafe.user;
-                        const fullName = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') || tgUser.username || 'Ученик';
-                        
                         if (!savedUser) {
                             const defaultUser = {
-                                name: fullName,
+                                firstName: '',
+                                lastName: '',
                                 username: tgUser.username ? tgUser.username.toLowerCase() : '',
                                 tgId: tgUser.id,
                                 grade: '',
                                 letter: '',
-                                avatar: fullName.charAt(0).toUpperCase()
+                                avatar: (tgUser.username || 'У').charAt(0).toUpperCase()
                             };
                             setCurrentUser(defaultUser);
                             setShowAuthModal(true);
@@ -187,11 +188,13 @@
                 return currentUser && currentUser.grade && currentUser.letter;
             };
 
-            const addAdmin = (username) => {
-                if (!username) return;
-                const cleanTag = username.replace('@', '').toLowerCase();
+            const addAdminByUsername = (e) => {
+                e.preventDefault();
+                if (!newAdminInput.trim()) return;
+                const cleanTag = newAdminInput.replace('@', '').trim().toLowerCase();
                 db.ref(`admin_users/${cleanTag}`).set(true);
-                showNotification(`Пользователь @${cleanTag} назначен администратором!`);
+                setNewAdminInput('');
+                showNotification(`Администратор @${cleanTag} успешно добавлен!`);
             };
 
             const removeAdmin = (username) => {
@@ -218,21 +221,28 @@
 
             const handleSaveProfile = (e) => {
                 e.preventDefault();
-                if (!authName.trim() || !authGrade || !authLetter) {
-                    showNotification("Заполните все поля, включая класс и букву.");
+                const cleanTag = authUsername.replace('@', '').trim().toLowerCase();
+                if (!cleanTag) {
+                    showNotification("Укажите Telegram @username.");
                     return;
                 }
-                const cleanTag = authUsername.replace('@', '').trim().toLowerCase();
+                if (!authGrade || !authLetter) {
+                    showNotification("Выберите класс и параллель.");
+                    return;
+                }
+
                 const newProfileData = {
-                    name: authName.trim(),
+                    firstName: authFirstName.trim(),
+                    lastName: authLastName.trim(),
                     username: cleanTag,
                     grade: authGrade,
                     letter: authLetter,
-                    avatar: authName.trim().charAt(0).toUpperCase(),
+                    avatar: (cleanTag || authFirstName || 'У').charAt(0).toUpperCase(),
                     tgId: currentUser ? currentUser.tgId : Date.now()
                 };
 
-                if (!currentUser || !currentUser.grade || isAdmin()) {
+                // Если новый пользователь или админ — сохраняем сразу
+                if (!currentUser || !currentUser.username || !currentUser.grade || isAdmin()) {
                     setCurrentUser(newProfileData);
                     localStorage.setItem('lyceum_user', JSON.stringify(newProfileData));
                     setShowAuthModal(false);
@@ -241,7 +251,8 @@
                     return;
                 }
 
-                const requestText = `Здравствуйте! Прошу подтвердить изменение моих данных в Лицейском Хабе:\nИмя: ${newProfileData.name}\nUsername: @${newProfileData.username || 'нет'}\nКласс: ${newProfileData.grade}-${newProfileData.letter}`;
+                // Обычный пользователь меняет имя/класс — требуется разрешение администратора
+                const requestText = `Здравствуйте! Прошу подтвердить изменение моих данных в Лицейском Хабе:\nИмя: ${newProfileData.firstName} ${newProfileData.lastName}\nUsername: @${newProfileData.username}\nКласс: ${newProfileData.grade}-${newProfileData.letter}`;
                 const encoded = encodeURIComponent(requestText);
                 
                 window.open(`https://t.me/${ROOT_ADMIN}?text=${encoded}`, '_blank');
@@ -265,95 +276,64 @@
             const saveEditedItem = (e) => {
                 e.preventDefault();
                 if (!editingItem) return;
-
-                if (!editTitle.trim()) {
-                    showNotification("⚠️ Заполните название / текст!", 2000);
-                    return;
-                }
+                if (!editTitle.trim()) { showNotification("⚠️ Заполните текст!"); return; }
 
                 const { firebaseId, type } = editingItem;
-                let updates = {};
-
                 if (type === 'lost') {
-                    updates = { title: editTitle, desc: editDesc, imageUrl: editImage };
-                    db.ref(`lost_items/${firebaseId}`).update(updates);
+                    db.ref(`lost_items/${firebaseId}`).update({ title: editTitle, desc: editDesc, imageUrl: editImage });
                 } else if (type === 'post') {
-                    updates = { text: editTitle, imageUrl: editImage };
-                    db.ref(`posts/${firebaseId}`).update(updates);
+                    db.ref(`posts/${firebaseId}`).update({ text: editTitle, imageUrl: editImage });
                 }
-
                 setEditingItem(null);
-                showNotification("Запись успешно обновлена!");
+                showNotification("Обновлено!");
             };
 
             const toggleLostStatus = (firebaseId, currentStatus) => {
                 const nextStatus = currentStatus === 'Найдено' ? 'Активно' : 'Найдено';
                 db.ref(`lost_items/${firebaseId}`).update({ status: nextStatus });
-                showNotification(`Статус изменен на: ${nextStatus}`);
             };
 
             const togglePinPost = (firebaseId, currentPinned) => {
                 db.ref(`posts/${firebaseId}`).update({ isPinned: !currentPinned });
-                showNotification(!currentPinned ? "Пост закреплен 📌" : "Пост откреплен");
             };
 
             const toggleLikePost = (postId, likesObj) => {
-                if (!currentUser || !currentUser.username) {
-                    showNotification("Нужен username для лайков");
-                    return;
-                }
+                if (!currentUser || !currentUser.username) { showNotification("Нужен username"); return; }
                 const tag = currentUser.username.toLowerCase();
                 const updatedLikes = { ...(likesObj || {}) };
-                if (updatedLikes[tag]) {
-                    delete updatedLikes[tag];
-                } else {
-                    updatedLikes[tag] = true;
-                }
+                if (updatedLikes[tag]) { delete updatedLikes[tag]; } else { updatedLikes[tag] = true; }
                 db.ref(`posts/${postId}/likes`).set(updatedLikes);
             };
 
             const openTelegramChat = (username, tgId, itemTitle, itemType) => {
-                let defaultText = `Здравствуйте! Пишу по поводу вашего объявления «${itemTitle}» (${itemType}).`;
-                const encodedText = encodeURIComponent(defaultText);
-
+                let defaultText = `Здравствуйте! Пишу по поводу «${itemTitle}» (${itemType}).`;
                 if (username) {
-                    window.open(`https://t.me/${username}?text=${encodedText}`, '_blank');
+                    window.open(`https://t.me/${username}?text=${encodeURIComponent(defaultText)}`, '_blank');
                 } else if (tgId) {
                     window.open(`tg://user?id=${tgId}`, '_blank');
                 } else {
-                    showNotification("У пользователя не указан username в Telegram");
+                    showNotification("Нет username");
                 }
             };
 
             const handleImageUpload = (e, setImageCallback) => {
                 const file = e.target.files[0];
                 if (!file) return;
-
                 const reader = new FileReader();
                 reader.onload = (event) => {
                     const img = new Image();
                     img.onload = () => {
                         const canvas = document.createElement('canvas');
-                        let width = img.width;
-                        let height = img.height;
-                        const MAX_SIZE = 800;
-                        if (width > MAX_SIZE || height > MAX_SIZE) {
-                            if (width > height) {
-                                height = Math.round((height * MAX_SIZE) / width);
-                                width = MAX_SIZE;
-                            } else {
-                                width = Math.round((width * MAX_SIZE) / height);
-                                height = MAX_SIZE;
-                            }
+                        let w = img.width, h = img.height;
+                        const MAX = 800;
+                        if (w > MAX || h > MAX) {
+                            if (w > h) { h = Math.round((h * MAX) / w); w = MAX; }
+                            else { w = Math.round((w * MAX) / h); h = MAX; }
                         }
-                        canvas.width = width;
-                        canvas.height = height;
+                        canvas.width = w; canvas.height = h;
                         const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0, width, height);
-
-                        let quality = 0.8;
-                        let dataUrl = canvas.toDataURL('image/jpeg', quality);
-                        setImageCallback(dataUrl);
+                        ctx.drawImage(img, 0, 0, w, h);
+                        setImageCallback(canvas.toDataURL('image/jpeg', 0.7));
                     };
                     img.src = event.target.result;
                 };
@@ -361,21 +341,17 @@
             };
 
             const addLostItem = () => {
-                if (!hasClass()) { showNotification("Укажите свой класс в профиле."); setShowProfileModal(true); return; }
+                if (!hasClass()) { showNotification("Укажите класс в профиле."); setShowProfileModal(true); return; }
                 if (isBanned()) { showNotification("Вы забанены."); return; }
-                
-                if (!newLostTitle.trim()) {
-                    showNotification("⚠️ Заполните название вещи!", 2000);
-                    return;
-                }
+                if (!newLostTitle.trim()) { showNotification("⚠️ Заполните название!"); return; }
 
-                if (!currentUser) return;
-                
+                const displayName = [currentUser.firstName, currentUser.lastName].filter(Boolean).join(' ') || `@${currentUser.username}`;
+
                 const newItem = {
                     title: newLostTitle.trim(),
                     desc: newLostDesc.trim(),
                     imageUrl: newLostImage,
-                    author: currentUser.name,
+                    author: displayName,
                     authorUsername: currentUser.username || '',
                     authorTgId: currentUser.tgId || '',
                     classStr: `${currentUser.grade}-${currentUser.letter}`,
@@ -390,32 +366,23 @@
                     setNewLostTitle('');
                     setNewLostDesc('');
                     setNewLostImage('');
-                    showNotification("Объявление опубликовано!");
+                    showNotification("Успешно опубликовано! 🎉");
                 }).catch(() => {
                     showNotification("Ошибка публикации");
                 });
             };
 
-            const removeLostItem = (firebaseId) => {
-                db.ref(`lost_items/${firebaseId}`).remove();
-                showNotification("Объявление удалено.");
-            };
-
             const addPost = () => {
-                if (!hasClass()) { showNotification("Укажите свой класс в профиле."); setShowProfileModal(true); return; }
+                if (!hasClass()) { showNotification("Укажите класс в профиле."); setShowProfileModal(true); return; }
                 if (isBanned()) { showNotification("Вы забанены."); return; }
-                
-                if (!newPostText.trim()) {
-                    showNotification("⚠️ Заполните текст поста!", 2000);
-                    return;
-                }
+                if (!newPostText.trim()) { showNotification("⚠️ Заполните текст!"); return; }
 
-                if (!currentUser) return;
+                const displayName = [currentUser.firstName, currentUser.lastName].filter(Boolean).join(' ') || `@${currentUser.username}`;
 
                 const newPostData = {
                     text: newPostText.trim(),
                     imageUrl: newPostImage,
-                    author: currentUser.name,
+                    author: displayName,
                     authorUsername: currentUser.username || '',
                     authorTgId: currentUser.tgId || '',
                     classStr: `${currentUser.grade}-${currentUser.letter}`,
@@ -429,27 +396,24 @@
                 }).then(() => {
                     setNewPostText('');
                     setNewPostImage('');
-                    showNotification("Пост опубликован в ленте!");
+                    showNotification("Пост опубликован! 🎉");
                 }).catch(() => {
                     showNotification("Ошибка публикации");
                 });
             };
 
-            const removePost = (firebaseId) => {
-                db.ref(`posts/${firebaseId}`).remove();
-                showNotification("Пост удален.");
-            };
-
             const addComment = (postId, e) => {
                 e.preventDefault();
-                if (!hasClass()) { showNotification("Укажите свой класс в профиле."); setShowProfileModal(true); return; }
+                if (!hasClass()) { showNotification("Укажите класс в профиле."); setShowProfileModal(true); return; }
                 if (isBanned()) { showNotification("Вы забанены."); return; }
                 const text = commentTexts[postId];
                 if (!text || !text.trim()) return;
 
+                const displayName = [currentUser.firstName, currentUser.lastName].filter(Boolean).join(' ') || `@${currentUser.username}`;
+
                 db.ref(`posts/${postId}/comments`).push({
                     text: text.trim(),
-                    author: currentUser.name,
+                    author: displayName,
                     classStr: `${currentUser.grade}-${currentUser.letter}`,
                     date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                 });
@@ -491,7 +455,7 @@
                 <div className={`flex flex-col h-full relative overflow-hidden transition-colors duration-300 ${themeClass}`}>
                     
                     {toastMessage && (
-                        <div className="absolute top-16 left-1/2 macos-toast-anim z-50 bg-slate-900/95 backdrop-blur-xl text-white text-xs px-4 py-3 rounded-2xl shadow-xl border border-white/15 flex items-center space-x-2.5">
+                        <div className="absolute top-16 left-1/2 apple-toast-anim z-50 bg-slate-900/95 backdrop-blur-xl text-white text-xs px-4 py-3 rounded-2xl shadow-xl border border-white/15 flex items-center space-x-2.5">
                             <span className="text-blue-400">✦</span>
                             <span className="font-medium">{toastMessage}</span>
                         </div>
@@ -518,7 +482,7 @@
                             {isAdmin() && (
                                 <button 
                                     onClick={() => setActiveTab('admin-panel')}
-                                    className={`text-xs font-semibold px-3 py-1.5 rounded-xl border ${activeTab === 'admin-panel' ? 'bg-blue-600 text-white border-transparent' : 'bg-blue-500/10 text-blue-400 border-blue-500/20'}`}>
+                                    className={`text-xs font-semibold px-3 py-1.5 rounded-xl border transition-all ${activeTab === 'admin-panel' ? 'bg-blue-600 text-white border-transparent' : 'bg-blue-500/10 text-blue-400 border-blue-500/20'}`}>
                                     🛡️ Админка
                                 </button>
                             )}
@@ -526,13 +490,14 @@
                             {currentUser ? (
                                 <button 
                                     onClick={() => {
-                                        setAuthName(currentUser.name || '');
+                                        setAuthFirstName(currentUser.firstName || '');
+                                        setAuthLastName(currentUser.lastName || '');
                                         setAuthUsername(currentUser.username || '');
                                         setAuthGrade(currentUser.grade || '');
                                         setAuthLetter(currentUser.letter || '');
                                         setShowProfileModal(true);
                                     }}
-                                    className={`flex items-center space-x-2 px-3 py-1.5 rounded-full border ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
+                                    className={`flex items-center space-x-2 px-3 py-1.5 rounded-full border transition-all ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
                                     <div className="w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] flex items-center font-bold justify-center">
                                         {currentUser.avatar || 'У'}
                                     </div>
@@ -570,8 +535,40 @@
                         )}
 
                         {activeTab === 'admin-panel' && isAdmin() && (
-                            <div className="space-y-4 macos-tab-view">
+                            <div className="space-y-4 apple-tab-view">
                                 <h2 className="text-xs font-bold text-blue-500 uppercase tracking-widest px-1">Панель администратора</h2>
+                                
+                                {/* Раздел добавления админов */}
+                                <div className={`p-4 rounded-2xl border space-y-3 ${cardClass}`}>
+                                    <h3 className="text-xs font-bold text-blue-400">Назначить администратора</h3>
+                                    <form onSubmit={addAdminByUsername} className="flex gap-2">
+                                        <input 
+                                            type="text" 
+                                            placeholder="username (без @)" 
+                                            value={newAdminInput} 
+                                            onChange={e => setNewAdminInput(e.target.value)} 
+                                            className={`flex-1 text-xs p-2.5 rounded-xl border ${inputClass}`} 
+                                            required 
+                                        />
+                                        <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3.5 py-2.5 rounded-xl transition">
+                                            Добавить
+                                        </button>
+                                    </form>
+
+                                    <div className="space-y-1 pt-1">
+                                        <div className="flex justify-between items-center text-xs p-2 bg-slate-900/50 rounded-xl">
+                                            <span className="font-bold">@{ROOT_ADMIN} <span className="text-[10px] text-blue-400">(Главный)</span></span>
+                                        </div>
+                                        {Object.keys(adminUsers).map(adminTag => (
+                                            <div key={adminTag} className="flex justify-between items-center text-xs p-2 bg-slate-900/50 rounded-xl">
+                                                <span>@{adminTag}</span>
+                                                <button onClick={() => removeAdmin(adminTag)} className="text-rose-400 font-bold">Удалить</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Раздел бана */}
                                 <div className={`p-4 rounded-2xl border space-y-3 ${cardClass}`}>
                                     <h3 className="text-xs font-bold text-rose-500">Бан пользователей</h3>
                                     <form onSubmit={(e) => {
@@ -579,7 +576,7 @@
                                         const input = e.target.elements.banTag.value.trim();
                                         if(input) { banUserByAdmin(input); e.target.reset(); }
                                     }} className="flex gap-2">
-                                        <input name="banTag" type="text" placeholder="username (без @)" className={`flex-1 text-xs p-2.5 rounded-xl border ${inputClass}`} required />
+                                        <input name="banTag" type="text" placeholder="username для бана" className={`flex-1 text-xs p-2.5 rounded-xl border ${inputClass}`} required />
                                         <button type="submit" className="bg-rose-500 text-white text-xs font-semibold px-3 py-2.5 rounded-xl">Забанить</button>
                                     </form>
                                     {Object.keys(bannedUsers).length > 0 && (
@@ -597,7 +594,7 @@
                         )}
 
                         {activeTab === 'lost-found' && (
-                            <div className="space-y-3.5">
+                            <div className="space-y-3.5 apple-tab-view">
                                 <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Бюро Потеряшек</h2>
 
                                 {currentUser && hasClass() && !isBanned() && (
@@ -660,9 +657,6 @@
                                                         <button onClick={() => openTelegramChat(item.authorUsername, item.authorTgId, item.title, 'Потеряшка')} className="bg-blue-500/10 text-blue-400 text-[11px] px-3 py-1.5 rounded-xl font-semibold">
                                                             Написать
                                                         </button>
-                                                        {canDeleteOrEdit(item.authorUsername, item.authorTgId) && (
-                                                            <button onClick={() => removeLostItem(item.firebaseId)} className="text-rose-400 text-[11px] font-semibold">Удалить</button>
-                                                        )}
                                                     </div>
                                                 </div>
                                             </div>
@@ -673,7 +667,7 @@
                         )}
 
                         {activeTab === 'hub' && (
-                            <div className="space-y-3.5">
+                            <div className="space-y-3.5 apple-tab-view">
                                 <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Лента Лицея</h2>
                                 {currentUser && hasClass() && !isBanned() && (
                                     <div className={`p-4 rounded-[24px] border space-y-3 ${cardClass}`}>
@@ -744,9 +738,6 @@
                                                         {isAdmin() && (
                                                             <button onClick={() => togglePinPost(p.firebaseId, p.isPinned)} className="text-[11px] text-blue-400 font-semibold">📌</button>
                                                         )}
-                                                        {canDeleteOrEdit(p.authorUsername, p.authorTgId) && (
-                                                            <button onClick={() => removePost(p.firebaseId)} className="text-[11px] text-rose-400 font-semibold">Удалить</button>
-                                                        )}
                                                     </div>
                                                 </div>
 
@@ -763,7 +754,7 @@
                                                         </div>
                                                     ))}
                                                     {currentUser && hasClass() && !isBanned() && (
-                                                        <div className="flex gap-1.5 pt-1">
+                                                        <form onSubmit={(e) => addComment(p.firebaseId, e)} className="flex gap-1.5 pt-1">
                                                             <input 
                                                                 type="text" 
                                                                 placeholder="Комментарий..."
@@ -771,8 +762,8 @@
                                                                 onChange={(e) => setCommentTexts({ ...commentTexts, [p.firebaseId]: e.target.value })}
                                                                 className={`flex-1 text-[11px] p-2 rounded-xl border ${inputClass}`}
                                                             />
-                                                            <button onClick={() => addComment(p.firebaseId, { preventDefault: () => {} })} className="bg-blue-600 text-white text-[11px] px-3 py-2 rounded-xl">Отпр.</button>
-                                                        </div>
+                                                            <button type="submit" className="bg-blue-600 text-white text-[11px] px-3 py-2 rounded-xl">Отпр.</button>
+                                                        </form>
                                                     )}
                                                 </div>
                                             </div>
@@ -783,7 +774,7 @@
                         )}
 
                         {activeTab === 'library' && (
-                            <div className="flex flex-col items-center justify-center py-24 space-y-3 text-center">
+                            <div className="flex flex-col items-center justify-center py-24 space-y-3 text-center apple-tab-view">
                                 <div className="w-16 h-16 rounded-3xl border flex items-center justify-center text-2xl bg-slate-800 border-slate-700">📚</div>
                                 <h2 className="text-sm font-bold">Библиотека</h2>
                                 <p className="text-xs text-slate-500">Скоро появится.</p>
@@ -791,49 +782,64 @@
                         )}
                     </main>
 
-                    {/* Модальное окно входа */}
+                    {/* Модальное окно первого входа (только юзернейм и класс) */}
                     {showAuthModal && (
                         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
-                            <div className={`border rounded-[32px] p-6 w-full max-w-xs space-y-4 ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
-                                <h3 className="font-bold text-center text-sm">Вход в Лицейский Хаб</h3>
+                            <div className={`border rounded-[32px] p-6 w-full max-w-xs space-y-4 apple-modal-anim ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
+                                <h3 className="font-bold text-center text-sm">Добро пожаловать в Лицейский Хаб</h3>
+                                <p className="text-[11px] text-slate-400 text-center">Укажите свой Telegram username и класс</p>
                                 <form onSubmit={handleSaveProfile} className="space-y-3">
-                                    <input type="text" placeholder="Имя и Фамилия" value={authName} onChange={e => setAuthName(e.target.value)} className={`w-full text-xs p-3 rounded-xl border ${inputClass}`} required />
-                                    <input type="text" placeholder="Telegram @username" value={authUsername} onChange={e => setAuthUsername(e.target.value)} className={`w-full text-xs p-3 rounded-xl border ${inputClass}`} />
-                                    <div className="flex gap-2">
-                                        <select value={authGrade} onChange={e => setAuthGrade(e.target.value)} className={`flex-1 text-xs p-3 rounded-xl border ${inputClass}`} required>
-                                            <option value="">Параллель</option>
-                                            {['5','6','7','8','9','10','11'].map(g => <option key={g} value={g}>{g}</option>)}
-                                        </select>
-                                        <select value={authLetter} onChange={e => setAuthLetter(e.target.value)} className={`flex-1 text-xs p-3 rounded-xl border ${inputClass}`} required>
-                                            <option value="">Буква</option>
-                                            {getAvailableLetters(authGrade).map(l => <option key={l} value={l}>{l}</option>)}
-                                        </select>
+                                    <div>
+                                        <label className="text-[10px] text-slate-400 font-semibold block mb-1">Telegram @username *</label>
+                                        <input type="text" placeholder="username" value={authUsername} onChange={e => setAuthUsername(e.target.value)} className={`w-full text-xs p-3 rounded-xl border ${inputClass}`} required />
                                     </div>
-                                    <button type="submit" className="w-full bg-blue-600 text-white text-xs font-semibold py-3 rounded-xl">Продолжить</button>
+                                    <div className="flex gap-2">
+                                        <div className="flex-1">
+                                            <label className="text-[10px] text-slate-400 font-semibold block mb-1">Класс *</label>
+                                            <select value={authGrade} onChange={e => setAuthGrade(e.target.value)} className={`w-full text-xs p-3 rounded-xl border ${inputClass}`} required>
+                                                <option value="">Параллель</option>
+                                                {['5','6','7','8','9','10','11'].map(g => <option key={g} value={g}>{g}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="flex-1">
+                                            <label className="text-[10px] text-slate-400 font-semibold block mb-1">Буква *</label>
+                                            <select value={authLetter} onChange={e => setAuthLetter(e.target.value)} className={`w-full text-xs p-3 rounded-xl border ${inputClass}`} required>
+                                                <option value="">Буква</option>
+                                                {getAvailableLetters(authGrade).map(l => <option key={l} value={l}>{l}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-3 rounded-xl transition shadow-md">Готово</button>
                                 </form>
                             </div>
                         </div>
                     )}
 
-                    {/* Модальное окно профиля */}
+                    {/* Модальное окно профиля (смена имени/фамилии/класса через запрос админу) */}
                     {showProfileModal && (
                         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
-                            <div className={`border rounded-[32px] p-6 w-full max-w-xs space-y-4 ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
+                            <div className={`border rounded-[32px] p-6 w-full max-w-xs space-y-4 apple-modal-anim ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
                                 <h3 className="font-bold text-center text-sm">Настройки профиля</h3>
+                                <p className="text-[10px] text-slate-400 text-center leading-relaxed">
+                                    {isAdmin() ? "Изменение данных (Админ)" : "Смена имени или класса требует подтверждения администратора"}
+                                </p>
                                 <form onSubmit={handleSaveProfile} className="space-y-3">
-                                    <input type="text" value={authName} onChange={e => setAuthName(e.target.value)} className={`w-full text-xs p-3 rounded-xl border ${inputClass}`} required />
-                                    <input type="text" value={authUsername} onChange={e => setAuthUsername(e.target.value)} className={`w-full text-xs p-3 rounded-xl border ${inputClass}`} />
                                     <div className="flex gap-2">
-                                        <select value={authGrade} onChange={e => setAuthGrade(e.target.value)} className={`flex-1 text-xs p-3 rounded-xl border ${inputClass}`} required>
+                                        <input type="text" placeholder="Имя" value={authFirstName} onChange={e => setAuthFirstName(e.target.value)} className={`flex-1 text-xs p-2.5 rounded-xl border ${inputClass}`} />
+                                        <input type="text" placeholder="Фамилия" value={authLastName} onChange={e => setAuthLastName(e.target.value)} className={`flex-1 text-xs p-2.5 rounded-xl border ${inputClass}`} />
+                                    </div>
+                                    <input type="text" placeholder="Telegram @username" value={authUsername} onChange={e => setAuthUsername(e.target.value)} className={`w-full text-xs p-2.5 rounded-xl border ${inputClass}`} required />
+                                    <div className="flex gap-2">
+                                        <select value={authGrade} onChange={e => setAuthGrade(e.target.value)} className={`flex-1 text-xs p-2.5 rounded-xl border ${inputClass}`} required>
                                             {['5','6','7','8','9','10','11'].map(g => <option key={g} value={g}>{g}</option>)}
                                         </select>
-                                        <select value={authLetter} onChange={e => setAuthLetter(e.target.value)} className={`flex-1 text-xs p-3 rounded-xl border ${inputClass}`} required>
+                                        <select value={authLetter} onChange={e => setAuthLetter(e.target.value)} className={`flex-1 text-xs p-2.5 rounded-xl border ${inputClass}`} required>
                                             {getAvailableLetters(authGrade).map(l => <option key={l} value={l}>{l}</option>)}
                                         </select>
                                     </div>
-                                    <div className="flex gap-2">
+                                    <div className="flex gap-2 pt-1">
                                         <button type="button" onClick={() => setShowProfileModal(false)} className="flex-1 text-xs py-3 rounded-xl bg-slate-800 text-slate-300">Отмена</button>
-                                        <button type="submit" className="flex-1 bg-blue-600 text-white text-xs py-3 rounded-xl">Сохранить</button>
+                                        <button type="submit" className="flex-1 bg-blue-600 text-white text-xs py-3 rounded-xl">{isAdmin() ? "Сохранить" : "Запросить"}</button>
                                     </div>
                                 </form>
                             </div>
@@ -841,9 +847,9 @@
                     )}
 
                     <nav className={`absolute bottom-0 left-0 right-0 backdrop-blur-xl border-t px-6 py-3 flex justify-around z-10 ${navClass}`}>
-                        <button onClick={() => setActiveTab('lost-found')} className={`text-xs font-semibold px-5 py-1.5 rounded-2xl ${activeTab === 'lost-found' ? 'text-blue-400 bg-blue-500/10' : 'text-slate-400'}`}>Потеряшки</button>
-                        <button onClick={() => setActiveTab('library')} className={`text-xs font-semibold px-5 py-1.5 rounded-2xl ${activeTab === 'library' ? 'text-blue-400 bg-blue-500/10' : 'text-slate-400'}`}>Библиотека</button>
-                        <button onClick={() => setActiveTab('hub')} className={`text-xs font-semibold px-5 py-1.5 rounded-2xl ${activeTab === 'hub' ? 'text-blue-400 bg-blue-500/10' : 'text-slate-400'}`}>Лента</button>
+                        <button onClick={() => setActiveTab('lost-found')} className={`text-xs font-semibold px-5 py-1.5 rounded-2xl transition-all duration-300 ${activeTab === 'lost-found' ? 'text-blue-400 bg-blue-500/10 scale-105 shadow-sm' : 'text-slate-400'}`}>Потеряшки</button>
+                        <button onClick={() => setActiveTab('library')} className={`text-xs font-semibold px-5 py-1.5 rounded-2xl transition-all duration-300 ${activeTab === 'library' ? 'text-blue-400 bg-blue-500/10 scale-105 shadow-sm' : 'text-slate-400'}`}>Библиотека</button>
+                        <button onClick={() => setActiveTab('hub')} className={`text-xs font-semibold px-5 py-1.5 rounded-2xl transition-all duration-300 ${activeTab === 'hub' ? 'text-blue-400 bg-blue-500/10 scale-105 shadow-sm' : 'text-slate-400'}`}>Лента</button>
                     </nav>
                 </div>
             );
