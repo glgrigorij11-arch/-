@@ -22,16 +22,16 @@
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 3px; }
 
-        /* macOS-style Анимации */
-        @keyframes macOsOpen {
+        /* macOS-style Плавные анимации переключения вкладок */
+        @keyframes tabSwitchFade {
             0% {
                 opacity: 0;
-                transform: scale(0.96) translateY(8px);
-                filter: blur(4px);
+                transform: translateY(6px) scale(0.985);
+                filter: blur(3px);
             }
             100% {
                 opacity: 1;
-                transform: scale(1) translateY(0);
+                transform: translateY(0) scale(1);
                 filter: blur(0px);
             }
         }
@@ -58,8 +58,8 @@
             }
         }
 
-        .macos-tab-anim {
-            animation: macOsOpen 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        .macos-tab-transition {
+            animation: tabSwitchFade 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
 
         .macos-modal-anim {
@@ -101,7 +101,6 @@
             const [showAuthModal, setShowAuthModal] = useState(false);
             const [showProfileModal, setShowProfileModal] = useState(false);
             
-            // Кастомное внутреннее уведомление вместо alert()
             const [toastMessage, setToastMessage] = useState(null);
 
             const showNotification = (text) => {
@@ -239,7 +238,6 @@
                 showNotification(`Пользователь @${username} разбанен.`);
             };
 
-            // Обработка сохранения профиля
             const handleSaveProfile = (e) => {
                 e.preventDefault();
                 if (!authName.trim() || !authGrade || !authLetter) {
@@ -512,12 +510,11 @@
                         </div>
                     )}
 
-                    {/* Контент с анимацией macOS */}
+                    {/* Контейнер контента с плавной macOS анимацией смены вкладок */}
                     <main className="flex-1 p-4 overflow-y-auto space-y-4 pb-24">
                         
-                        {/* ПАНЕЛЬ АДМИНА */}
                         {activeTab === 'admin-panel' && isAdmin() && (
-                            <div key="admin" className="space-y-4 macos-tab-anim">
+                            <div key="admin" className="space-y-4 macos-tab-transition">
                                 <h2 className="text-sm font-bold text-blue-600 uppercase tracking-wider px-1">Панель администратора</h2>
                                 
                                 <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
@@ -593,9 +590,8 @@
                             </div>
                         )}
 
-                        {/* ПОТЕРЯШКИ */}
                         {activeTab === 'lost-found' && (
-                            <div key="lost" className="space-y-3 macos-tab-anim">
+                            <div key="lost" className="space-y-3 macos-tab-transition">
                                 <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider px-1">Бюро Потеряшек</h2>
 
                                 {currentUser && hasClass() && !isBanned() && (
@@ -678,18 +674,16 @@
                             </div>
                         )}
 
-                        {/* БИБЛИОТЕКА (В разработке) */}
                         {activeTab === 'library' && (
-                            <div key="library" className="flex flex-col items-center justify-center py-20 space-y-2 text-center macos-tab-anim">
+                            <div key="library" className="flex flex-col items-center justify-center py-20 space-y-2 text-center macos-tab-transition">
                                 <div className="text-3xl animate-bounce">📚</div>
                                 <h2 className="text-sm font-bold text-slate-800">Библиотека</h2>
                                 <p className="text-xs text-slate-400">Раздел находится в разработке...</p>
                             </div>
                         )}
 
-                        {/* ЛЕНТА */}
                         {activeTab === 'hub' && (
-                            <div key="hub" className="space-y-3 macos-tab-anim">
+                            <div key="hub" className="space-y-3 macos-tab-transition">
                                 <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider px-1">Лента Лицея</h2>
                                 {currentUser && hasClass() && !isBanned() && (
                                     <form onSubmit={addPost} className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-2.5">
@@ -811,7 +805,7 @@
                         )}
                     </main>
 
-                    {/* Модальное окно редактирования (с эффектом macOS) */}
+                    {/* Модальное окно редактирования */}
                     {editingItem && (
                         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                             <div className="bg-white border border-slate-200 rounded-3xl p-5 w-full max-w-xs space-y-3.5 shadow-2xl macos-modal-anim">
