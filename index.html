@@ -17,14 +17,62 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
         ::-webkit-scrollbar { width: 3px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 3px; }
+
+        /* macOS-style Анимации */
+        @keyframes macOsOpen {
+            0% {
+                opacity: 0;
+                transform: scale(0.96) translateY(8px);
+                filter: blur(4px);
+            }
+            100% {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+                filter: blur(0px);
+            }
+        }
+
+        @keyframes macOsModal {
+            0% {
+                opacity: 0;
+                transform: scale(0.88) translateY(12px);
+            }
+            100% {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        @keyframes toastSlide {
+            0% {
+                opacity: 0;
+                transform: translate(-50%, -12px) scale(0.95);
+            }
+            100% {
+                opacity: 1;
+                transform: translate(-50%, 0) scale(1);
+            }
+        }
+
+        .macos-tab-anim {
+            animation: macOsOpen 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        .macos-modal-anim {
+            animation: macOsModal 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        .macos-toast-anim {
+            animation: toastSlide 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
     </style>
 </head>
 <body class="bg-slate-100 text-slate-800 min-h-screen flex justify-center items-center">
-    <div id="root" class="w-full max-w-md h-screen sm:h-[850px] sm:rounded-3xl sm:shadow-xl overflow-hidden flex flex-col bg-white border border-slate-200/60 relative"></div>
+    <div id="root" class="w-full max-w-md h-screen sm:h-[850px] sm:rounded-3xl sm:shadow-2xl overflow-hidden flex flex-col bg-slate-50 border border-slate-200/80 relative"></div>
 
     <script type="text/babel">
         const firebaseConfig = { 
@@ -79,7 +127,6 @@
             const [posts, setPosts] = useState([]);
             const [bannedUsers, setBannedUsers] = useState({});
             const [adminUsers, setAdminUsers] = useState({});
-            const [profileRequests, setProfileRequests] = useState({});
 
             const [newLostTitle, setNewLostTitle] = useState('');
             const [newLostDesc, setNewLostDesc] = useState('');
@@ -146,10 +193,6 @@
                 db.ref('admin_users').on('value', (snapshot) => {
                     setAdminUsers(snapshot.val() || {});
                 });
-
-                db.ref('profile_requests').on('value', (snapshot) => {
-                    setProfileRequests(snapshot.val() || {});
-                });
             }, []);
 
             const isBanned = () => {
@@ -200,7 +243,7 @@
             const handleSaveProfile = (e) => {
                 e.preventDefault();
                 if (!authName.trim() || !authGrade || !authLetter) {
-                    showNotification("Пожалуйста, заполните все поля, включая класс и букву.");
+                    showNotification("Заполните все поля, включая класс и букву.");
                     return;
                 }
                 const cleanTag = authUsername.replace('@', '').trim().toLowerCase();
@@ -404,10 +447,11 @@
             return (
                 <div className="flex flex-col h-full bg-slate-50 text-slate-800 relative overflow-hidden">
                     
-                    {/* Кастомное уведомление (Тост) вместо alert */}
+                    {/* Кастомное macOS-уведомление (Тост) */}
                     {toastMessage && (
-                        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-xs px-4 py-2.5 rounded-2xl shadow-xl transition animate-bounce">
-                            {toastMessage}
+                        <div className="absolute top-16 left-1/2 macos-toast-anim z-50 bg-slate-900/90 backdrop-blur-md text-white text-xs px-4 py-2.5 rounded-2xl shadow-2xl border border-white/10 flex items-center space-x-2">
+                            <span>✨</span>
+                            <span className="font-medium">{toastMessage}</span>
                         </div>
                     )}
 
@@ -427,7 +471,7 @@
                             {isAdmin() && (
                                 <button 
                                     onClick={() => setActiveTab('admin-panel')}
-                                    className={`text-xs font-semibold px-2.5 py-1.5 rounded-xl border transition ${activeTab === 'admin-panel' ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-50 text-blue-600 border-blue-200'}`}>
+                                    className={`text-xs font-semibold px-2.5 py-1.5 rounded-xl border transition ${activeTab === 'admin-panel' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100'}`}>
                                     🛡️ Админка
                                 </button>
                             )}
@@ -468,15 +512,14 @@
                         </div>
                     )}
 
-                    {/* Контент */}
+                    {/* Контент с анимацией macOS */}
                     <main className="flex-1 p-4 overflow-y-auto space-y-4 pb-24">
                         
                         {/* ПАНЕЛЬ АДМИНА */}
                         {activeTab === 'admin-panel' && isAdmin() && (
-                            <div className="space-y-4">
+                            <div key="admin" className="space-y-4 macos-tab-anim">
                                 <h2 className="text-sm font-bold text-blue-600 uppercase tracking-wider px-1">Панель администратора</h2>
                                 
-                                {/* Управление банами */}
                                 <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
                                     <h3 className="text-xs font-bold text-rose-600">Черный список и Бан</h3>
                                     <form onSubmit={(e) => {
@@ -491,7 +534,7 @@
                                             className="flex-1 text-xs p-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-rose-500"
                                             required
                                         />
-                                        <button type="submit" className="bg-rose-500 hover:bg-rose-600 text-white text-xs font-semibold px-3 py-2 rounded-xl">
+                                        <button type="submit" className="bg-rose-500 hover:bg-rose-600 text-white text-xs font-semibold px-3 py-2 rounded-xl transition">
                                             Забанить
                                         </button>
                                     </form>
@@ -526,7 +569,7 @@
                                             className="flex-1 text-xs p-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500"
                                             required
                                         />
-                                        <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-2 rounded-xl">
+                                        <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-2 rounded-xl transition">
                                             Добавить
                                         </button>
                                     </form>
@@ -552,7 +595,7 @@
 
                         {/* ПОТЕРЯШКИ */}
                         {activeTab === 'lost-found' && (
-                            <div className="space-y-3">
+                            <div key="lost" className="space-y-3 macos-tab-anim">
                                 <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider px-1">Бюро Потеряшек</h2>
 
                                 {currentUser && hasClass() && !isBanned() && (
@@ -593,7 +636,7 @@
                                         <div className="text-center py-10 text-slate-400 text-xs">Нет объявлений о потерянных вещах.</div>
                                     ) : (
                                         lostItems.map(item => (
-                                            <div key={item.firebaseId} className="bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-sm space-y-2">
+                                            <div key={item.firebaseId} className="bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-sm space-y-2 transition hover:shadow-md">
                                                 {item.imageUrl && (
                                                     <div className="w-full bg-slate-900 rounded-xl overflow-hidden flex items-center justify-center">
                                                         <img src={item.imageUrl} alt="Фото" className="w-full h-auto object-contain max-h-[350px]" />
@@ -637,8 +680,8 @@
 
                         {/* БИБЛИОТЕКА (В разработке) */}
                         {activeTab === 'library' && (
-                            <div className="flex flex-col items-center justify-center py-20 space-y-2 text-center">
-                                <div className="text-3xl">📚</div>
+                            <div key="library" className="flex flex-col items-center justify-center py-20 space-y-2 text-center macos-tab-anim">
+                                <div className="text-3xl animate-bounce">📚</div>
                                 <h2 className="text-sm font-bold text-slate-800">Библиотека</h2>
                                 <p className="text-xs text-slate-400">Раздел находится в разработке...</p>
                             </div>
@@ -646,7 +689,7 @@
 
                         {/* ЛЕНТА */}
                         {activeTab === 'hub' && (
-                            <div className="space-y-3">
+                            <div key="hub" className="space-y-3 macos-tab-anim">
                                 <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider px-1">Лента Лицея</h2>
                                 {currentUser && hasClass() && !isBanned() && (
                                     <form onSubmit={addPost} className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-2.5">
@@ -680,7 +723,7 @@
                                         posts.map(p => {
                                             const comments = p.comments ? Object.keys(p.comments).map(cKey => ({ id: cKey, ...p.comments[cKey] })) : [];
                                             return (
-                                                <div key={p.firebaseId} className="bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-sm space-y-2.5">
+                                                <div key={p.firebaseId} className="bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-sm space-y-2.5 transition hover:shadow-md">
                                                     <div className="flex justify-between items-center">
                                                         <div className="flex items-center space-x-2">
                                                             <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 text-[10px] font-bold flex items-center justify-center">
@@ -753,7 +796,7 @@
                                                                     onChange={(e) => setCommentTexts({ ...commentTexts, [p.firebaseId]: e.target.value })}
                                                                     className="flex-1 text-[11px] p-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500"
                                                                 />
-                                                                <button type="submit" className="bg-blue-600 text-white text-[11px] font-semibold px-3 py-1.5 rounded-xl">
+                                                                <button type="submit" className="bg-blue-600 text-white text-[11px] font-semibold px-3 py-1.5 rounded-xl transition">
                                                                     Отправить
                                                                 </button>
                                                             </form>
@@ -768,10 +811,10 @@
                         )}
                     </main>
 
-                    {/* Модальное окно редактирования */}
+                    {/* Модальное окно редактирования (с эффектом macOS) */}
                     {editingItem && (
-                        <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                            <div className="bg-white border border-slate-200 rounded-3xl p-5 w-full max-w-xs space-y-3.5 shadow-xl">
+                        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                            <div className="bg-white border border-slate-200 rounded-3xl p-5 w-full max-w-xs space-y-3.5 shadow-2xl macos-modal-anim">
                                 <h3 className="font-bold text-slate-900 text-center text-sm">Редактирование</h3>
                                 <form onSubmit={saveEditedItem} className="space-y-3">
                                     <div>
@@ -835,8 +878,8 @@
 
                     {/* Модальное окно первого входа */}
                     {showAuthModal && (
-                        <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                            <div className="bg-white border border-slate-200 rounded-3xl p-5 w-full max-w-xs space-y-3.5 shadow-xl">
+                        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                            <div className="bg-white border border-slate-200 rounded-3xl p-5 w-full max-w-xs space-y-3.5 shadow-2xl macos-modal-anim">
                                 <h3 className="font-bold text-slate-900 text-center text-sm">Вход в Лицейский Хаб</h3>
                                 <form onSubmit={handleSaveProfile} className="space-y-3">
                                     <div>
@@ -911,8 +954,8 @@
 
                     {/* Модальное окно профиля */}
                     {showProfileModal && (
-                        <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                            <div className="bg-white border border-slate-200 rounded-3xl p-5 w-full max-w-xs space-y-3.5 shadow-xl">
+                        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                            <div className="bg-white border border-slate-200 rounded-3xl p-5 w-full max-w-xs space-y-3.5 shadow-2xl macos-modal-anim">
                                 <h3 className="font-bold text-slate-900 text-center text-sm">Настройки профиля</h3>
                                 <p className="text-[10px] text-slate-400 text-center">
                                     {isAdmin() ? "Изменение данных (Админ)" : "Изменение сформирует запрос администратору (@" + ROOT_ADMIN + ")"}
@@ -991,20 +1034,20 @@
                     )}
 
                     {/* Навигация */}
-                    <nav className="absolute bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-slate-200/80 px-4 py-2.5 flex justify-around z-10 shadow-sm">
+                    <nav className="absolute bottom-0 left-0 right-0 bg-white/80 backdrop-blur-md border-t border-slate-200/80 px-4 py-2.5 flex justify-around z-10 shadow-sm">
                         <button 
                             onClick={() => setActiveTab('lost-found')}
-                            className={`flex flex-col items-center text-xs font-semibold transition px-4 py-1 rounded-xl ${activeTab === 'lost-found' ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:text-slate-600'}`}>
+                            className={`flex flex-col items-center text-xs font-semibold transition-all duration-200 px-4 py-1 rounded-xl ${activeTab === 'lost-found' ? 'text-blue-600 bg-blue-50 scale-105' : 'text-slate-400 hover:text-slate-600'}`}>
                             <span>Потеряшки</span>
                         </button>
                         <button 
                             onClick={() => setActiveTab('library')}
-                            className={`flex flex-col items-center text-xs font-semibold transition px-4 py-1 rounded-xl ${activeTab === 'library' ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:text-slate-600'}`}>
+                            className={`flex flex-col items-center text-xs font-semibold transition-all duration-200 px-4 py-1 rounded-xl ${activeTab === 'library' ? 'text-blue-600 bg-blue-50 scale-105' : 'text-slate-400 hover:text-slate-600'}`}>
                             <span>Библиотека</span>
                         </button>
                         <button 
                             onClick={() => setActiveTab('hub')}
-                            className={`flex flex-col items-center text-xs font-semibold transition px-4 py-1 rounded-xl ${activeTab === 'hub' ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:text-slate-600'}`}>
+                            className={`flex flex-col items-center text-xs font-semibold transition-all duration-200 px-4 py-1 rounded-xl ${activeTab === 'hub' ? 'text-blue-600 bg-blue-50 scale-105' : 'text-slate-400 hover:text-slate-600'}`}>
                             <span>Лента</span>
                         </button>
                     </nav>
