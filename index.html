@@ -83,7 +83,7 @@
                 return ['А', 'Б', 'В', 'Г'];
             };
 
-            // Авторизация и проверка одобрения профиля
+            // Авторизация
             useEffect(() => {
                 const savedUser = localStorage.getItem('lyceum_user');
                 if (savedUser) {
@@ -142,18 +142,6 @@
                 });
             }, []);
 
-            // Автоматическое применение одобренного профиля текущего пользователя
-            useEffect(() => {
-                if (!currentUser || !currentUser.username) return;
-                const reqRef = db.ref(`profile_requests/${currentUser.username}`);
-                reqRef.on('value', (snapshot) => {
-                    const data = snapshot.val();
-                    if (!data && currentUser.pendingApproval) {
-                        // Если заявка исчезла из базы (значит одобрена), но у нас висел флаг — подтягиваем свежие данные из localStorage или заставляем обновить
-                    }
-                });
-            }, [currentUser]);
-
             const isBanned = () => {
                 if (!currentUser || !currentUser.username) return false;
                 return !!bannedUsers[currentUser.username.toLowerCase()];
@@ -196,8 +184,8 @@
                 db.ref(`banned_users/${username}`).remove();
             };
 
-            // Отправка запроса на изменение профиля
-            const handleSaveProfileRequest = (e) => {
+            // Обработка сохранения профиля
+            const handleSaveProfile = (e) => {
                 e.preventDefault();
                 if (!authName.trim() || !authGrade || !authLetter) {
                     alert("Пожалуйста, заполните все поля, включая класс и букву.");
@@ -213,35 +201,25 @@
                     tgId: currentUser ? currentUser.tgId : Date.now()
                 };
 
-                // Если класс еще вообще не был указан (первый вход)
-                if (!currentUser || !currentUser.grade) {
+                // Если это первый вход (класс еще не был указан) или пользователь — администратор: сохраняем сразу
+                if (!currentUser || !currentUser.grade || isAdmin()) {
                     setCurrentUser(newProfileData);
                     localStorage.setItem('lyceum_user', JSON.stringify(newProfileData));
                     setShowAuthModal(false);
+                    setShowProfileModal(false);
+                    if (isAdmin() && currentUser && currentUser.grade) {
+                        alert("Профиль успешно изменен!");
+                    }
                     return;
                 }
 
-                // Отправка запроса админам
-                const requestId = cleanTag || `user_${Date.now()}`;
-                db.ref(`profile_requests/${requestId}`).set(newProfileData);
-                alert("Запрос на изменение профиля отправлен администраторам на проверку!");
+                // Для обычных пользователей: формируем ссылку на отправку разрешения админу
+                const requestText = `Здравствуйте! Прошу подтвердить изменение моих данных в Лицейском Хабе:\nИмя: ${newProfileData.name}\nUsername: @${newProfileData.username || 'нет'}\nКласс: ${newProfileData.grade}-${newProfileData.letter}`;
+                const encoded = encodeURIComponent(requestText);
+                
+                // Открываем чат с главным администратором
+                window.open(`https://t.me/${ROOT_ADMIN}?text=${encoded}`, '_blank');
                 setShowProfileModal(false);
-            };
-
-            // Одобрение профиля администратором
-            const approveProfile = (requestId, profileData) => {
-                db.ref(`profile_requests/${requestId}`).remove();
-                // Если это текущий пользователь за компьютером, обновляем сразу
-                if (currentUser && currentUser.username === profileData.username) {
-                    setCurrentUser(profileData);
-                    localStorage.setItem('lyceum_user', JSON.stringify(profileData));
-                }
-                alert(`Запрос пользователя ${profileData.name} подтвержден!`);
-            };
-
-            const rejectProfile = (requestId) => {
-                db.ref(`profile_requests/${requestId}`).remove();
-                alert("Запрос отклонен.");
             };
 
             const canDeleteOrEdit = (itemAuthorUsername, itemAuthorTgId) => {
@@ -472,37 +450,6 @@
                             <div className="space-y-4">
                                 <h2 className="text-sm font-bold text-blue-600 uppercase tracking-wider px-1">Панель администратора</h2>
                                 
-                                {/* Запросы на смену профиля */}
-                                <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
-                                    <h3 className="text-xs font-bold text-slate-800">Запросы на изменение профиля</h3>
-                                    {Object.keys(profileRequests).length === 0 ? (
-                                        <p className="text-xs text-slate-400 py-2">Нет новых запросов.</p>
-                                    ) : (
-                                        <div className="space-y-2">
-                                            {Object.keys(profileRequests).map(reqId => {
-                                                const req = profileRequests[reqId];
-                                                return (
-                                                    <div key={reqId} className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2 text-xs">
-                                                        <p className="font-bold text-slate-900">{req.name} (@{req.username || 'нет'}) — Класс: {req.grade}-{req.letter}</p>
-                                                        <div className="flex gap-2">
-                                                            <button 
-                                                                onClick={() => approveProfile(reqId, req)}
-                                                                className="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-lg font-semibold">
-                                                                Подтвердить
-                                                            </button>
-                                                            <button 
-                                                                onClick={() => rejectProfile(reqId)}
-                                                                className="bg-rose-50 text-rose-600 px-3 py-1 rounded-lg font-semibold">
-                                                                Отклонить
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                </div>
-
                                 {/* Управление банами */}
                                 <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
                                     <h3 className="text-xs font-bold text-rose-600">Черный список и Бан</h3>
@@ -865,7 +812,7 @@
                         <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                             <div className="bg-white border border-slate-200 rounded-3xl p-5 w-full max-w-xs space-y-3.5 shadow-xl">
                                 <h3 className="font-bold text-slate-900 text-center text-sm">Вход в Лицейский Хаб</h3>
-                                <form onSubmit={handleSaveProfileRequest} className="space-y-3">
+                                <form onSubmit={handleSaveProfile} className="space-y-3">
                                     <div>
                                         <label className="text-[11px] text-slate-500 font-medium block mb-1">Имя и фамилия</label>
                                         <input 
@@ -941,8 +888,10 @@
                         <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                             <div className="bg-white border border-slate-200 rounded-3xl p-5 w-full max-w-xs space-y-3.5 shadow-xl">
                                 <h3 className="font-bold text-slate-900 text-center text-sm">Настройки профиля</h3>
-                                <p className="text-[10px] text-slate-400 text-center">Изменение данных требует подтверждения администратора.</p>
-                                <form onSubmit={handleSaveProfileRequest} className="space-y-3">
+                                <p className="text-[10px] text-slate-400 text-center">
+                                    {isAdmin() ? "Изменение данных (Админ)" : "Изменение сформирует запрос администратору (@" + ROOT_ADMIN + ")"}
+                                </p>
+                                <form onSubmit={handleSaveProfile} className="space-y-3">
                                     <div>
                                         <label className="text-[11px] text-slate-500 font-medium block mb-1">Имя и фамилия</label>
                                         <input 
@@ -1007,7 +956,7 @@
                                         <button 
                                             type="submit" 
                                             className="flex-1 bg-blue-600 text-white text-xs font-semibold py-2.5 rounded-xl hover:bg-blue-700 transition">
-                                            Отправить
+                                            {isAdmin() ? "Сохранить" : "Запросить"}
                                         </button>
                                     </div>
                                 </form>
