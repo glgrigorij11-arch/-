@@ -88,11 +88,6 @@
                 setToastMessage(text);
                 setTimeout(() => { setToastMessage(null); }, duration);
             };
-            
-            const [editingItem, setEditingItem] = useState(null); 
-            const [editTitle, setEditTitle] = useState('');
-            const [editDesc, setEditDesc] = useState('');
-            const [editImage, setEditImage] = useState('');
 
             const [authFirstName, setAuthFirstName] = useState('');
             const [authLastName, setAuthLastName] = useState('');
@@ -188,6 +183,26 @@
                 return currentUser && currentUser.grade && currentUser.letter;
             };
 
+            const isFullyRegistered = () => {
+                return currentUser && currentUser.firstName && currentUser.firstName.trim() && currentUser.lastName && currentUser.lastName.trim() && hasClass();
+            };
+
+            const checkRegistrationOrPrompt = () => {
+                if (!isFullyRegistered()) {
+                    showNotification("⚠️ Заполните Имя и Фамилию для выполнения действий!");
+                    if (currentUser) {
+                        setAuthFirstName(currentUser.firstName || '');
+                        setAuthLastName(currentUser.lastName || '');
+                        setAuthUsername(currentUser.username || '');
+                        setAuthGrade(currentUser.grade || '');
+                        setAuthLetter(currentUser.letter || '');
+                    }
+                    setShowProfileModal(true);
+                    return false;
+                }
+                return true;
+            };
+
             const addAdminByUsername = (e) => {
                 e.preventDefault();
                 if (!newAdminInput.trim()) return;
@@ -237,7 +252,7 @@
                     username: cleanTag,
                     grade: authGrade,
                     letter: authLetter,
-                    avatar: (cleanTag || authFirstName || 'У').charAt(0).toUpperCase(),
+                    avatar: (authFirstName || cleanTag || 'У').charAt(0).toUpperCase(),
                     tgId: currentUser ? currentUser.tgId : Date.now()
                 };
 
@@ -265,16 +280,18 @@
             };
 
             const toggleLostStatus = (firebaseId, currentStatus) => {
+                if (!checkRegistrationOrPrompt()) return;
                 const nextStatus = currentStatus === 'Найдено' ? 'Активно' : 'Найдено';
                 db.ref(`lost_items/${firebaseId}`).update({ status: nextStatus });
             };
 
             const togglePinPost = (firebaseId, currentPinned) => {
+                if (!isAdmin()) return;
                 db.ref(`posts/${firebaseId}`).update({ isPinned: !currentPinned });
             };
 
             const toggleLikePost = (postId, likesObj) => {
-                if (!currentUser || !currentUser.username) { showNotification("Нужен username"); return; }
+                if (!checkRegistrationOrPrompt()) return;
                 const tag = currentUser.username.toLowerCase();
                 const updatedLikes = { ...(likesObj || {}) };
                 if (updatedLikes[tag]) { delete updatedLikes[tag]; } else { updatedLikes[tag] = true; }
@@ -282,6 +299,7 @@
             };
 
             const openTelegramChat = (username, tgId, itemTitle, itemType) => {
+                if (!checkRegistrationOrPrompt()) return;
                 let defaultText = `Здравствуйте! Пишу по поводу «${itemTitle}» (${itemType}).`;
                 if (username) {
                     window.open(`https://t.me/${username}?text=${encodeURIComponent(defaultText)}`, '_blank');
@@ -317,11 +335,11 @@
             };
 
             const addLostItem = () => {
-                if (!hasClass()) { showNotification("Укажите класс в профиле."); setShowProfileModal(true); return; }
+                if (!checkRegistrationOrPrompt()) return;
                 if (isBanned()) { showNotification("Вы забанены."); return; }
                 if (!newLostTitle.trim()) { showNotification("⚠️ Заполните название!"); return; }
 
-                const displayName = [currentUser.firstName, currentUser.lastName].filter(Boolean).join(' ') || `@${currentUser.username}`;
+                const displayName = `${currentUser.firstName} ${currentUser.lastName}`;
 
                 const newItem = {
                     title: newLostTitle.trim(),
@@ -349,11 +367,11 @@
             };
 
             const addPost = () => {
-                if (!hasClass()) { showNotification("Укажите класс в профиле."); setShowProfileModal(true); return; }
+                if (!checkRegistrationOrPrompt()) return;
                 if (isBanned()) { showNotification("Вы забанены."); return; }
                 if (!newPostText.trim()) { showNotification("⚠️ Заполните текст!"); return; }
 
-                const displayName = [currentUser.firstName, currentUser.lastName].filter(Boolean).join(' ') || `@${currentUser.username}`;
+                const displayName = `${currentUser.firstName} ${currentUser.lastName}`;
 
                 const newPostData = {
                     text: newPostText.trim(),
@@ -380,12 +398,12 @@
 
             const addComment = (postId, e) => {
                 e.preventDefault();
-                if (!hasClass()) { showNotification("Укажите класс в профиле."); setShowProfileModal(true); return; }
+                if (!checkRegistrationOrPrompt()) return;
                 if (isBanned()) { showNotification("Вы забанены."); return; }
                 const text = commentTexts[postId];
                 if (!text || !text.trim()) return;
 
-                const displayName = [currentUser.firstName, currentUser.lastName].filter(Boolean).join(' ') || `@${currentUser.username}`;
+                const displayName = `${currentUser.firstName} ${currentUser.lastName}`;
 
                 db.ref(`posts/${postId}/comments`).push({
                     text: text.trim(),
@@ -431,7 +449,7 @@
                 <div className={`flex flex-col h-full relative overflow-hidden transition-colors duration-300 ${themeClass}`}>
                     
                     {toastMessage && (
-                        <div className="absolute top-16 left-1/2 apple-toast-anim z-50 bg-slate-900/95 backdrop-blur-xl text-white text-xs px-4 py-3 rounded-2xl shadow-xl border border-white/15 flex items-center space-x-2.5">
+                        <div className="absolute top-16 left-1/2 apple-toast-anim z-50 bg-slate-900/95 backdrop-blur-xl text-white text-xs px-4 py-3 rounded-2xl shadow-xl border border-white/15 flex items-center space-x-2.5 max-w-[90%] text-center">
                             <span className="text-blue-400">✦</span>
                             <span className="font-medium">{toastMessage}</span>
                         </div>
@@ -571,25 +589,27 @@
                             <div className="space-y-3.5 apple-tab-view">
                                 <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Бюро Потеряшек</h2>
 
-                                {currentUser && hasClass() && !isBanned() && (
+                                {!isBanned() && (
                                     <div className={`p-4 rounded-[24px] border space-y-3 ${cardClass}`}>
                                         <input 
                                             type="text" 
                                             placeholder="Что потерялось или нашлось? *" 
                                             value={newLostTitle}
                                             onChange={(e) => setNewLostTitle(e.target.value)}
+                                            onFocus={checkRegistrationOrPrompt}
                                             className={`w-full text-xs p-3 rounded-xl border focus:outline-none ${inputClass}`}
                                         />
                                         <textarea 
                                             placeholder="Описание..." 
                                             value={newLostDesc}
                                             onChange={(e) => setNewLostDesc(e.target.value)}
+                                            onFocus={checkRegistrationOrPrompt}
                                             className={`w-full text-xs p-3 rounded-xl border focus:outline-none resize-none h-18 ${inputClass}`}
                                         />
                                         <div className="flex items-center gap-2">
                                             <label className="cursor-pointer text-xs px-3.5 py-2 rounded-xl font-medium border bg-slate-700 text-slate-200">
                                                 📷 Фото
-                                                <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setNewLostImage)} className="hidden" />
+                                                <input type="file" accept="image/*" onChange={(e) => { if(checkRegistrationOrPrompt()) handleImageUpload(e, setNewLostImage); }} className="hidden" />
                                             </label>
                                             {newLostImage && <span className="text-xs text-emerald-400">✓ Загружено</span>}
                                         </div>
@@ -643,18 +663,19 @@
                         {activeTab === 'hub' && (
                             <div className="space-y-3.5 apple-tab-view">
                                 <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Лента Лицея</h2>
-                                {currentUser && hasClass() && !isBanned() && (
+                                {!isBanned() && (
                                     <div className={`p-4 rounded-[24px] border space-y-3 ${cardClass}`}>
                                         <textarea 
                                             placeholder="Поделитесь новостью... *" 
                                             value={newPostText}
                                             onChange={(e) => setNewPostText(e.target.value)}
+                                            onFocus={checkRegistrationOrPrompt}
                                             className={`w-full text-xs p-3 rounded-xl border focus:outline-none resize-none h-18 ${inputClass}`}
                                         />
                                         <div className="flex items-center gap-2">
                                             <label className="cursor-pointer text-xs px-3.5 py-2 rounded-xl font-medium border bg-slate-700 text-slate-200">
                                                 📷 Фото
-                                                <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setNewPostImage)} className="hidden" />
+                                                <input type="file" accept="image/*" onChange={(e) => { if(checkRegistrationOrPrompt()) handleImageUpload(e, setNewPostImage); }} className="hidden" />
                                             </label>
                                             {newPostImage && <span className="text-xs text-emerald-400">✓ Загружено</span>}
                                         </div>
@@ -726,13 +747,14 @@
                                                             )}
                                                         </div>
                                                     ))}
-                                                    {currentUser && hasClass() && !isBanned() && (
+                                                    {!isBanned() && (
                                                         <form onSubmit={(e) => addComment(p.firebaseId, e)} className="flex gap-1.5 pt-1">
                                                             <input 
                                                                 type="text" 
                                                                 placeholder="Комментарий..."
                                                                 value={commentTexts[p.firebaseId] || ''}
                                                                 onChange={(e) => setCommentTexts({ ...commentTexts, [p.firebaseId]: e.target.value })}
+                                                                onFocus={checkRegistrationOrPrompt}
                                                                 className={`flex-1 text-[11px] p-2 rounded-xl border ${inputClass}`}
                                                             />
                                                             <button type="submit" className="bg-blue-600 text-white text-[11px] px-3 py-2 rounded-xl">Отпр.</button>
@@ -759,8 +781,26 @@
                         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
                             <div className={`border rounded-[32px] p-6 w-full max-w-xs space-y-4 apple-modal-anim ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
                                 <h3 className="font-bold text-center text-sm">Добро пожаловать в Лицейский Хаб</h3>
-                                <p className="text-[11px] text-slate-400 text-center">Укажите свой Telegram username и класс</p>
+                                <p className="text-[11px] text-slate-400 text-center">Заполните данные для полной регистрации</p>
                                 <form onSubmit={handleSaveProfile} className="space-y-3 w-full">
+                                    <div className="flex gap-2 w-full">
+                                        <input 
+                                            type="text" 
+                                            placeholder="Имя *" 
+                                            value={authFirstName} 
+                                            onChange={e => setAuthFirstName(e.target.value)} 
+                                            className={`flex-1 min-w-0 text-xs p-2.5 rounded-xl border focus:outline-none focus:border-blue-500 ${inputClass}`} 
+                                            required
+                                        />
+                                        <input 
+                                            type="text" 
+                                            placeholder="Фамилия *" 
+                                            value={authLastName} 
+                                            onChange={e => setAuthLastName(e.target.value)} 
+                                            className={`flex-1 min-w-0 text-xs p-2.5 rounded-xl border focus:outline-none focus:border-blue-500 ${inputClass}`} 
+                                            required
+                                        />
+                                    </div>
                                     <div>
                                         <label className="text-[10px] text-slate-400 font-semibold block mb-1">Telegram @username *</label>
                                         <div className="relative flex items-center">
@@ -770,7 +810,7 @@
                                                 placeholder="username" 
                                                 value={authUsername.replace(/^@/, '')} 
                                                 onChange={e => setAuthUsername(e.target.value)} 
-                                                className={`w-full text-xs p-3 pl-7 rounded-xl border focus:outline-none focus:border-blue-500 ${inputClass}`} 
+                                                className={`w-full text-xs p-2.5 pl-7 rounded-xl border focus:outline-none focus:border-blue-500 ${inputClass}`} 
                                                 required 
                                             />
                                         </div>
@@ -778,20 +818,20 @@
                                     <div className="flex gap-2 w-full">
                                         <div className="flex-1 min-w-0">
                                             <label className="text-[10px] text-slate-400 font-semibold block mb-1">Класс *</label>
-                                            <select value={authGrade} onChange={e => setAuthGrade(e.target.value)} className={`w-full text-xs p-3 rounded-xl border focus:outline-none focus:border-blue-500 ${inputClass}`} required>
+                                            <select value={authGrade} onChange={e => setAuthGrade(e.target.value)} className={`w-full text-xs p-2.5 rounded-xl border focus:outline-none focus:border-blue-500 ${inputClass}`} required>
                                                 <option value="">Параллель</option>
                                                 {['5','6','7','8','9','10','11'].map(g => <option key={g} value={g}>{g}</option>)}
                                             </select>
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <label className="text-[10px] text-slate-400 font-semibold block mb-1">Буква *</label>
-                                            <select value={authLetter} onChange={e => setAuthLetter(e.target.value)} className={`w-full text-xs p-3 rounded-xl border focus:outline-none focus:border-blue-500 ${inputClass}`} required>
+                                            <select value={authLetter} onChange={e => setAuthLetter(e.target.value)} className={`w-full text-xs p-2.5 rounded-xl border focus:outline-none focus:border-blue-500 ${inputClass}`} required>
                                                 <option value="">Буква</option>
                                                 {getAvailableLetters(authGrade).map(l => <option key={l} value={l}>{l}</option>)}
                                             </select>
                                         </div>
                                     </div>
-                                    <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-3 rounded-xl transition shadow-md">Готово</button>
+                                    <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-3 rounded-xl transition shadow-md">Зарегистрироваться</button>
                                 </form>
                             </div>
                         </div>
@@ -801,26 +841,30 @@
                         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
                             <div className={`border rounded-[32px] p-6 w-full max-w-xs space-y-4 apple-modal-anim ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
                                 <h3 className="font-bold text-center text-sm">
-                                    {isAdmin() ? "Изменение данных (Админ)" : "Настройки профиля"}
+                                    {isAdmin() ? "Изменение данных (Админ)" : "Регистрация / Профиль"}
                                 </h3>
                                 <p className="text-[10px] text-slate-400 text-center leading-relaxed">
-                                    {isAdmin() ? "Изменение данных без подтверждения" : "Смена имени или класса требует подтверждения администратора"}
+                                    {!isFullyRegistered() 
+                                        ? "Заполните Имя и Фамилию для создания постов и комментариев" 
+                                        : (isAdmin() ? "Изменение данных без подтверждения" : "Смена имени или класса требует подтверждения администратора")}
                                 </p>
                                 <form onSubmit={handleSaveProfile} className="space-y-3 w-full">
                                     <div className="flex gap-2 w-full">
                                         <input 
                                             type="text" 
-                                            placeholder="Имя" 
+                                            placeholder="Имя *" 
                                             value={authFirstName} 
                                             onChange={e => setAuthFirstName(e.target.value)} 
                                             className={`flex-1 min-w-0 text-xs p-2.5 rounded-xl border focus:outline-none focus:border-blue-500 ${inputClass}`} 
+                                            required
                                         />
                                         <input 
                                             type="text" 
-                                            placeholder="Фамилия" 
+                                            placeholder="Фамилия *" 
                                             value={authLastName} 
                                             onChange={e => setAuthLastName(e.target.value)} 
                                             className={`flex-1 min-w-0 text-xs p-2.5 rounded-xl border focus:outline-none focus:border-blue-500 ${inputClass}`} 
+                                            required
                                         />
                                     </div>
                                     <div>
@@ -847,7 +891,9 @@
                                     </div>
                                     <div className="flex gap-2 pt-1 w-full">
                                         <button type="button" onClick={() => setShowProfileModal(false)} className="flex-1 text-xs py-3 rounded-xl bg-slate-800 text-slate-300">Отмена</button>
-                                        <button type="submit" className="flex-1 bg-blue-600 text-white text-xs py-3 rounded-xl font-semibold">{isAdmin() ? "Сохранить" : "Запросить"}</button>
+                                        <button type="submit" className="flex-1 bg-blue-600 text-white text-xs py-3 rounded-xl font-semibold">
+                                            {isAdmin() || !isFullyRegistered() ? "Сохранить" : "Запросить"}
+                                        </button>
                                     </div>
                                 </form>
                             </div>
