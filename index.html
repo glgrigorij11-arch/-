@@ -155,11 +155,15 @@
                 db.ref('lost_items').on('value', (snapshot) => {
                     const data = snapshot.val();
                     setLostItems(data ? Object.keys(data).map(key => ({ firebaseId: key, ...data[key] })).reverse() : []);
+                }, (error) => {
+                    console.error("Ошибка чтения потеряшек:", error);
                 });
 
                 db.ref('posts').on('value', (snapshot) => {
                     const data = snapshot.val();
                     setPosts(data ? Object.keys(data).map(key => ({ firebaseId: key, ...data[key] })).reverse() : []);
+                }, (error) => {
+                    console.error("Ошибка чтения постов:", error);
                 });
 
                 db.ref('banned_users').on('value', (snapshot) => {
@@ -375,8 +379,7 @@
                 setShowProfileModal(true);
             };
 
-            const addLostItem = (e) => {
-                e.preventDefault();
+            const addLostItem = () => {
                 if (!hasClass()) { showNotification("Укажите свой класс в профиле."); setShowProfileModal(true); return; }
                 if (isBanned()) { showNotification("Вы забанены."); return; }
                 
@@ -387,7 +390,7 @@
 
                 if (!currentUser) return;
                 
-                db.ref('lost_items').push({
+                const newItem = {
                     title: newLostTitle.trim(),
                     desc: newLostDesc.trim(),
                     imageUrl: newLostImage,
@@ -397,6 +400,10 @@
                     classStr: `${currentUser.grade}-${currentUser.letter}`,
                     status: 'Активно',
                     date: new Date().toLocaleDateString()
+                };
+
+                db.ref('lost_items').push(newItem).catch((err) => {
+                    console.error("Firebase push error:", err);
                 });
 
                 setNewLostTitle('');
@@ -410,8 +417,7 @@
                 showNotification("Объявление удалено.");
             };
 
-            const addPost = (e) => {
-                e.preventDefault();
+            const addPost = () => {
                 if (!hasClass()) { showNotification("Укажите свой класс в профиле."); setShowProfileModal(true); return; }
                 if (isBanned()) { showNotification("Вы забанены."); return; }
                 
@@ -422,7 +428,7 @@
 
                 if (!currentUser) return;
 
-                db.ref('posts').push({
+                const newPostData = {
                     text: newPostText.trim(),
                     imageUrl: newPostImage,
                     author: currentUser.name,
@@ -431,6 +437,10 @@
                     classStr: `${currentUser.grade}-${currentUser.letter}`,
                     isPinned: false,
                     date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                };
+
+                db.ref('posts').push(newPostData).catch((err) => {
+                    console.error("Firebase post push error:", err);
                 });
 
                 setNewPostText('');
