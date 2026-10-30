@@ -241,7 +241,6 @@
                     tgId: currentUser ? currentUser.tgId : Date.now()
                 };
 
-                // Если новый пользователь или админ — сохраняем сразу
                 if (!currentUser || !currentUser.username || !currentUser.grade || isAdmin()) {
                     setCurrentUser(newProfileData);
                     localStorage.setItem('lyceum_user', JSON.stringify(newProfileData));
@@ -251,7 +250,6 @@
                     return;
                 }
 
-                // Обычный пользователь меняет имя/класс — требуется разрешение администратора
                 const requestText = `Здравствуйте! Прошу подтвердить изменение моих данных в Лицейском Хабе:\nИмя: ${newProfileData.firstName} ${newProfileData.lastName}\nUsername: @${newProfileData.username}\nКласс: ${newProfileData.grade}-${newProfileData.letter}`;
                 const encoded = encodeURIComponent(requestText);
                 
@@ -264,28 +262,6 @@
                 if (!currentUser) return false;
                 const isAuthor = (currentUser.username && currentUser.username === itemAuthorUsername) || (currentUser.tgId && currentUser.tgId === itemAuthorTgId);
                 return isAdmin() || isAuthor;
-            };
-
-            const startEditing = (item, type) => {
-                setEditingItem({ ...item, type });
-                setEditTitle(item.title || item.text || '');
-                setEditDesc(item.desc || item.author || '');
-                setEditImage(item.imageUrl || '');
-            };
-
-            const saveEditedItem = (e) => {
-                e.preventDefault();
-                if (!editingItem) return;
-                if (!editTitle.trim()) { showNotification("⚠️ Заполните текст!"); return; }
-
-                const { firebaseId, type } = editingItem;
-                if (type === 'lost') {
-                    db.ref(`lost_items/${firebaseId}`).update({ title: editTitle, desc: editDesc, imageUrl: editImage });
-                } else if (type === 'post') {
-                    db.ref(`posts/${firebaseId}`).update({ text: editTitle, imageUrl: editImage });
-                }
-                setEditingItem(null);
-                showNotification("Обновлено!");
             };
 
             const toggleLostStatus = (firebaseId, currentStatus) => {
@@ -538,7 +514,6 @@
                             <div className="space-y-4 apple-tab-view">
                                 <h2 className="text-xs font-bold text-blue-500 uppercase tracking-widest px-1">Панель администратора</h2>
                                 
-                                {/* Раздел добавления админов */}
                                 <div className={`p-4 rounded-2xl border space-y-3 ${cardClass}`}>
                                     <h3 className="text-xs font-bold text-blue-400">Назначить администратора</h3>
                                     <form onSubmit={addAdminByUsername} className="flex gap-2">
@@ -568,7 +543,6 @@
                                     </div>
                                 </div>
 
-                                {/* Раздел бана */}
                                 <div className={`p-4 rounded-2xl border space-y-3 ${cardClass}`}>
                                     <h3 className="text-xs font-bold text-rose-500">Бан пользователей</h3>
                                     <form onSubmit={(e) => {
@@ -741,7 +715,6 @@
                                                     </div>
                                                 </div>
 
-                                                {/* Комментарии */}
                                                 <div className="pt-2 border-t border-slate-700/40 space-y-2">
                                                     {comments.map(c => (
                                                         <div key={c.id} className="p-2 rounded-xl text-[11px] bg-slate-900/60 border border-slate-800 flex justify-between">
@@ -782,28 +755,37 @@
                         )}
                     </main>
 
-                    {/* Модальное окно первого входа (только юзернейм и класс) */}
                     {showAuthModal && (
                         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
                             <div className={`border rounded-[32px] p-6 w-full max-w-xs space-y-4 apple-modal-anim ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
                                 <h3 className="font-bold text-center text-sm">Добро пожаловать в Лицейский Хаб</h3>
                                 <p className="text-[11px] text-slate-400 text-center">Укажите свой Telegram username и класс</p>
-                                <form onSubmit={handleSaveProfile} className="space-y-3">
+                                <form onSubmit={handleSaveProfile} className="space-y-3 w-full">
                                     <div>
                                         <label className="text-[10px] text-slate-400 font-semibold block mb-1">Telegram @username *</label>
-                                        <input type="text" placeholder="username" value={authUsername} onChange={e => setAuthUsername(e.target.value)} className={`w-full text-xs p-3 rounded-xl border ${inputClass}`} required />
+                                        <div className="relative flex items-center">
+                                            <span className="absolute left-3 text-xs text-slate-400 font-semibold">@</span>
+                                            <input 
+                                                type="text" 
+                                                placeholder="username" 
+                                                value={authUsername.replace(/^@/, '')} 
+                                                onChange={e => setAuthUsername(e.target.value)} 
+                                                className={`w-full text-xs p-3 pl-7 rounded-xl border focus:outline-none focus:border-blue-500 ${inputClass}`} 
+                                                required 
+                                            />
+                                        </div>
                                     </div>
-                                    <div className="flex gap-2">
-                                        <div className="flex-1">
+                                    <div className="flex gap-2 w-full">
+                                        <div className="flex-1 min-w-0">
                                             <label className="text-[10px] text-slate-400 font-semibold block mb-1">Класс *</label>
-                                            <select value={authGrade} onChange={e => setAuthGrade(e.target.value)} className={`w-full text-xs p-3 rounded-xl border ${inputClass}`} required>
+                                            <select value={authGrade} onChange={e => setAuthGrade(e.target.value)} className={`w-full text-xs p-3 rounded-xl border focus:outline-none focus:border-blue-500 ${inputClass}`} required>
                                                 <option value="">Параллель</option>
                                                 {['5','6','7','8','9','10','11'].map(g => <option key={g} value={g}>{g}</option>)}
                                             </select>
                                         </div>
-                                        <div className="flex-1">
+                                        <div className="flex-1 min-w-0">
                                             <label className="text-[10px] text-slate-400 font-semibold block mb-1">Буква *</label>
-                                            <select value={authLetter} onChange={e => setAuthLetter(e.target.value)} className={`w-full text-xs p-3 rounded-xl border ${inputClass}`} required>
+                                            <select value={authLetter} onChange={e => setAuthLetter(e.target.value)} className={`w-full text-xs p-3 rounded-xl border focus:outline-none focus:border-blue-500 ${inputClass}`} required>
                                                 <option value="">Буква</option>
                                                 {getAvailableLetters(authGrade).map(l => <option key={l} value={l}>{l}</option>)}
                                             </select>
@@ -815,31 +797,57 @@
                         </div>
                     )}
 
-                    {/* Модальное окно профиля (смена имени/фамилии/класса через запрос админу) */}
                     {showProfileModal && (
                         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
                             <div className={`border rounded-[32px] p-6 w-full max-w-xs space-y-4 apple-modal-anim ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
-                                <h3 className="font-bold text-center text-sm">Настройки профиля</h3>
+                                <h3 className="font-bold text-center text-sm">
+                                    {isAdmin() ? "Изменение данных (Админ)" : "Настройки профиля"}
+                                </h3>
                                 <p className="text-[10px] text-slate-400 text-center leading-relaxed">
-                                    {isAdmin() ? "Изменение данных (Админ)" : "Смена имени или класса требует подтверждения администратора"}
+                                    {isAdmin() ? "Изменение данных без подтверждения" : "Смена имени или класса требует подтверждения администратора"}
                                 </p>
-                                <form onSubmit={handleSaveProfile} className="space-y-3">
-                                    <div className="flex gap-2">
-                                        <input type="text" placeholder="Имя" value={authFirstName} onChange={e => setAuthFirstName(e.target.value)} className={`flex-1 text-xs p-2.5 rounded-xl border ${inputClass}`} />
-                                        <input type="text" placeholder="Фамилия" value={authLastName} onChange={e => setAuthLastName(e.target.value)} className={`flex-1 text-xs p-2.5 rounded-xl border ${inputClass}`} />
+                                <form onSubmit={handleSaveProfile} className="space-y-3 w-full">
+                                    <div className="flex gap-2 w-full">
+                                        <input 
+                                            type="text" 
+                                            placeholder="Имя" 
+                                            value={authFirstName} 
+                                            onChange={e => setAuthFirstName(e.target.value)} 
+                                            className={`flex-1 min-w-0 text-xs p-2.5 rounded-xl border focus:outline-none focus:border-blue-500 ${inputClass}`} 
+                                        />
+                                        <input 
+                                            type="text" 
+                                            placeholder="Фамилия" 
+                                            value={authLastName} 
+                                            onChange={e => setAuthLastName(e.target.value)} 
+                                            className={`flex-1 min-w-0 text-xs p-2.5 rounded-xl border focus:outline-none focus:border-blue-500 ${inputClass}`} 
+                                        />
                                     </div>
-                                    <input type="text" placeholder="Telegram @username" value={authUsername} onChange={e => setAuthUsername(e.target.value)} className={`w-full text-xs p-2.5 rounded-xl border ${inputClass}`} required />
-                                    <div className="flex gap-2">
-                                        <select value={authGrade} onChange={e => setAuthGrade(e.target.value)} className={`flex-1 text-xs p-2.5 rounded-xl border ${inputClass}`} required>
+                                    <div>
+                                        <label className="text-[10px] text-slate-400 font-semibold block mb-1">Telegram @username</label>
+                                        <div className="relative flex items-center">
+                                            <span className="absolute left-3 text-xs text-slate-400 font-semibold">@</span>
+                                            <input 
+                                                type="text" 
+                                                placeholder="username" 
+                                                value={authUsername.replace(/^@/, '')} 
+                                                onChange={e => setAuthUsername(e.target.value)} 
+                                                className={`w-full text-xs p-2.5 pl-7 rounded-xl border focus:outline-none focus:border-blue-500 ${inputClass}`} 
+                                                required 
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2 w-full">
+                                        <select value={authGrade} onChange={e => setAuthGrade(e.target.value)} className={`flex-1 min-w-0 text-xs p-2.5 rounded-xl border focus:outline-none focus:border-blue-500 ${inputClass}`} required>
                                             {['5','6','7','8','9','10','11'].map(g => <option key={g} value={g}>{g}</option>)}
                                         </select>
-                                        <select value={authLetter} onChange={e => setAuthLetter(e.target.value)} className={`flex-1 text-xs p-2.5 rounded-xl border ${inputClass}`} required>
+                                        <select value={authLetter} onChange={e => setAuthLetter(e.target.value)} className={`flex-1 min-w-0 text-xs p-2.5 rounded-xl border focus:outline-none focus:border-blue-500 ${inputClass}`} required>
                                             {getAvailableLetters(authGrade).map(l => <option key={l} value={l}>{l}</option>)}
                                         </select>
                                     </div>
-                                    <div className="flex gap-2 pt-1">
+                                    <div className="flex gap-2 pt-1 w-full">
                                         <button type="button" onClick={() => setShowProfileModal(false)} className="flex-1 text-xs py-3 rounded-xl bg-slate-800 text-slate-300">Отмена</button>
-                                        <button type="submit" className="flex-1 bg-blue-600 text-white text-xs py-3 rounded-xl">{isAdmin() ? "Сохранить" : "Запросить"}</button>
+                                        <button type="submit" className="flex-1 bg-blue-600 text-white text-xs py-3 rounded-xl font-semibold">{isAdmin() ? "Сохранить" : "Запросить"}</button>
                                     </div>
                                 </form>
                             </div>
