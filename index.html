@@ -58,17 +58,14 @@
             const [editDesc, setEditDesc] = useState('');
             const [editImage, setEditImage] = useState('');
 
-            // Поля профиля (изначально класс не выбран)
             const [authName, setAuthName] = useState('');
             const [authUsername, setAuthUsername] = useState('');
             const [authGrade, setAuthGrade] = useState('');
             const [authLetter, setAuthLetter] = useState('');
 
-            // Комментарии
             const [commentTexts, setCommentTexts] = useState({});
 
             const [lostItems, setLostItems] = useState([]);
-            const [books, setBooks] = useState([]);
             const [posts, setPosts] = useState([]);
             const [bannedUsers, setBannedUsers] = useState({});
             const [adminUsers, setAdminUsers] = useState({});
@@ -78,24 +75,19 @@
             const [newLostDesc, setNewLostDesc] = useState('');
             const [newLostImage, setNewLostImage] = useState('');
 
-            const [newBookTitle, setNewBookTitle] = useState('');
-            const [newBookAuthor, setNewBookAuthor] = useState('');
-
             const [newPostText, setNewPostText] = useState('');
             const [newPostImage, setNewPostImage] = useState('');
 
-            // Доступные буквы в зависимости от параллели
             const getAvailableLetters = (grade) => {
                 if (grade === '10' || grade === '11') return ['А', 'Б', 'В'];
                 return ['А', 'Б', 'В', 'Г'];
             };
 
-            // Авторизация
+            // Авторизация и проверка одобрения профиля
             useEffect(() => {
                 const savedUser = localStorage.getItem('lyceum_user');
                 if (savedUser) {
                     setCurrentUser(JSON.parse(savedUser));
-                    return;
                 }
 
                 if (window.Telegram && window.Telegram.WebApp) {
@@ -107,18 +99,20 @@
                         const tgUser = tg.initDataUnsafe.user;
                         const fullName = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') || tgUser.username || 'Ученик';
                         
-                        const defaultUser = {
-                            name: fullName,
-                            username: tgUser.username ? tgUser.username.toLowerCase() : '',
-                            tgId: tgUser.id,
-                            grade: '',
-                            letter: '',
-                            avatar: fullName.charAt(0).toUpperCase()
-                        };
-                        setCurrentUser(defaultUser);
-                        setShowAuthModal(true); // Просим заполнить класс при первом входе
+                        if (!savedUser) {
+                            const defaultUser = {
+                                name: fullName,
+                                username: tgUser.username ? tgUser.username.toLowerCase() : '',
+                                tgId: tgUser.id,
+                                grade: '',
+                                letter: '',
+                                avatar: fullName.charAt(0).toUpperCase()
+                            };
+                            setCurrentUser(defaultUser);
+                            setShowAuthModal(true);
+                        }
                     }
-                } else {
+                } else if (!savedUser) {
                     setShowAuthModal(true);
                 }
             }, []);
@@ -128,11 +122,6 @@
                 db.ref('lost_items').on('value', (snapshot) => {
                     const data = snapshot.val();
                     setLostItems(data ? Object.keys(data).map(key => ({ firebaseId: key, ...data[key] })).reverse() : []);
-                });
-
-                db.ref('books').on('value', (snapshot) => {
-                    const data = snapshot.val();
-                    setBooks(data ? Object.keys(data).map(key => ({ firebaseId: key, ...data[key] })).reverse() : []);
                 });
 
                 db.ref('posts').on('value', (snapshot) => {
@@ -153,6 +142,18 @@
                 });
             }, []);
 
+            // Автоматическое применение одобренного профиля текущего пользователя
+            useEffect(() => {
+                if (!currentUser || !currentUser.username) return;
+                const reqRef = db.ref(`profile_requests/${currentUser.username}`);
+                reqRef.on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    if (!data && currentUser.pendingApproval) {
+                        // Если заявка исчезла из базы (значит одобрена), но у нас висел флаг — подтягиваем свежие данные из localStorage или заставляем обновить
+                    }
+                });
+            }, [currentUser]);
+
             const isBanned = () => {
                 if (!currentUser || !currentUser.username) return false;
                 return !!bannedUsers[currentUser.username.toLowerCase()];
@@ -164,7 +165,6 @@
                 return tag === ROOT_ADMIN.toLowerCase() || !!adminUsers[tag];
             };
 
-            // Проверка, заполнен ли класс у пользователя
             const hasClass = () => {
                 return currentUser && currentUser.grade && currentUser.letter;
             };
@@ -184,20 +184,19 @@
                 db.ref(`admin_users/${username}`).remove();
             };
 
-            const banUser = (username) => {
-                if (!username) { alert("У пользователя нет username."); return; }
+            const banUserByAdmin = (username) => {
+                if (!username) return;
                 const cleanTag = username.replace('@', '').toLowerCase();
-                if (cleanTag === ROOT_ADMIN.toLowerCase()) { alert("Нельзя забанить администратора!"); return; }
-                if (confirm(`Забанить пользователя @${cleanTag}?`)) {
-                    db.ref(`banned_users/${cleanTag}`).set(true);
-                }
+                if (cleanTag === ROOT_ADMIN.toLowerCase()) { alert("Нельзя забанить главного администратора!"); return; }
+                db.ref(`banned_users/${cleanTag}`).set(true);
+                alert(`Пользователь @${cleanTag} забанен.`);
             };
 
             const unbanUser = (username) => {
                 db.ref(`banned_users/${username}`).remove();
             };
 
-            // Запрос на изменение профиля с подтверждением админа
+            // Отправка запроса на изменение профиля
             const handleSaveProfileRequest = (e) => {
                 e.preventDefault();
                 if (!authName.trim() || !authGrade || !authLetter) {
@@ -214,7 +213,7 @@
                     tgId: currentUser ? currentUser.tgId : Date.now()
                 };
 
-                // Если это первая регистрация (класс еще не был указан вообще), применяем сразу без одобрения админа
+                // Если класс еще вообще не был указан (первый вход)
                 if (!currentUser || !currentUser.grade) {
                     setCurrentUser(newProfileData);
                     localStorage.setItem('lyceum_user', JSON.stringify(newProfileData));
@@ -222,21 +221,27 @@
                     return;
                 }
 
-                // Иначе отправляем запрос на модерацию админам
+                // Отправка запроса админам
                 const requestId = cleanTag || `user_${Date.now()}`;
                 db.ref(`profile_requests/${requestId}`).set(newProfileData);
                 alert("Запрос на изменение профиля отправлен администраторам на проверку!");
                 setShowProfileModal(false);
             };
 
-            const approveProfile = (requestId, data) => {
-                // Если юзер уже залогинен и это его запрос, обновляем локально
+            // Одобрение профиля администратором
+            const approveProfile = (requestId, profileData) => {
                 db.ref(`profile_requests/${requestId}`).remove();
-                alert(`Запрос пользователя ${data.name} подтвержден!`);
+                // Если это текущий пользователь за компьютером, обновляем сразу
+                if (currentUser && currentUser.username === profileData.username) {
+                    setCurrentUser(profileData);
+                    localStorage.setItem('lyceum_user', JSON.stringify(profileData));
+                }
+                alert(`Запрос пользователя ${profileData.name} подтвержден!`);
             };
 
             const rejectProfile = (requestId) => {
                 db.ref(`profile_requests/${requestId}`).remove();
+                alert("Запрос отклонен.");
             };
 
             const canDeleteOrEdit = (itemAuthorUsername, itemAuthorTgId) => {
@@ -262,9 +267,6 @@
                 if (type === 'lost') {
                     updates = { title: editTitle, desc: editDesc, imageUrl: editImage };
                     db.ref(`lost_items/${firebaseId}`).update(updates);
-                } else if (type === 'book') {
-                    updates = { title: editTitle, author: editDesc };
-                    db.ref(`books/${firebaseId}`).update(updates);
                 } else if (type === 'post') {
                     updates = { text: editTitle, imageUrl: editImage };
                     db.ref(`posts/${firebaseId}`).update(updates);
@@ -335,10 +337,9 @@
                 setShowProfileModal(true);
             };
 
-            // Публикации с проверкой класса
             const addLostItem = (e) => {
                 e.preventDefault();
-                if (!hasClass()) { alert("Пожалуйста, укажите свой класс в профиле перед созданием записей."); setShowProfileModal(true); return; }
+                if (!hasClass()) { alert("Укажите свой класс в профиле."); setShowProfileModal(true); return; }
                 if (isBanned()) { alert("Вы забанены."); return; }
                 if (!newLostTitle.trim() || !currentUser) return;
                 
@@ -360,31 +361,9 @@
 
             const removeLostItem = (firebaseId) => db.ref(`lost_items/${firebaseId}`).remove();
 
-            const addBook = (e) => {
-                e.preventDefault();
-                if (!hasClass()) { alert("Пожалуйста, укажите свой класс в профиле."); setShowProfileModal(true); return; }
-                if (isBanned()) { alert("Вы забанены."); return; }
-                if (!newBookTitle.trim() || !currentUser) return;
-
-                db.ref('books').push({
-                    title: newBookTitle,
-                    author: newBookAuthor || 'Не указан',
-                    holder: currentUser.name,
-                    holderUsername: currentUser.username,
-                    holderTgId: currentUser.tgId,
-                    classStr: `${currentUser.grade}-${currentUser.letter}`,
-                    status: 'Доступна'
-                });
-
-                setNewBookTitle('');
-                setNewBookAuthor('');
-            };
-
-            const removeBook = (firebaseId) => db.ref(`books/${firebaseId}`).remove();
-
             const addPost = (e) => {
                 e.preventDefault();
-                if (!hasClass()) { alert("Пожалуйста, укажите свой класс в профиле."); setShowProfileModal(true); return; }
+                if (!hasClass()) { alert("Укажите свой класс в профиле."); setShowProfileModal(true); return; }
                 if (isBanned()) { alert("Вы забанены."); return; }
                 if (!newPostText.trim() || !currentUser) return;
 
@@ -404,10 +383,9 @@
 
             const removePost = (firebaseId) => db.ref(`posts/${firebaseId}`).remove();
 
-            // Добавление комментария к посту
             const addComment = (postId, e) => {
                 e.preventDefault();
-                if (!hasClass()) { alert("Укажите свой класс в профиле, чтобы оставлять комментарии."); setShowProfileModal(true); return; }
+                if (!hasClass()) { alert("Укажите свой класс в профиле."); setShowProfileModal(true); return; }
                 if (isBanned()) { alert("Вы забанены."); return; }
                 const text = commentTexts[postId];
                 if (!text || !text.trim()) return;
@@ -508,11 +486,7 @@
                                                         <p className="font-bold text-slate-900">{req.name} (@{req.username || 'нет'}) — Класс: {req.grade}-{req.letter}</p>
                                                         <div className="flex gap-2">
                                                             <button 
-                                                                onClick={() => {
-                                                                    // Подтверждаем и сохраняем юзеру
-                                                                    db.ref(`profile_requests/${reqId}`).remove();
-                                                                    alert("Запрос одобрен!");
-                                                                }}
+                                                                onClick={() => approveProfile(reqId, req)}
                                                                 className="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-lg font-semibold">
                                                                 Подтвердить
                                                             </button>
@@ -525,6 +499,42 @@
                                                     </div>
                                                 );
                                             })}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Управление банами */}
+                                <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
+                                    <h3 className="text-xs font-bold text-rose-600">Черный список и Бан</h3>
+                                    <form onSubmit={(e) => {
+                                        e.preventDefault();
+                                        const input = e.target.elements.banTag.value.trim();
+                                        if(input) { banUserByAdmin(input); e.target.reset(); }
+                                    }} className="flex gap-2">
+                                        <input 
+                                            name="banTag"
+                                            type="text" 
+                                            placeholder="username для бана (без @)" 
+                                            className="flex-1 text-xs p-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-rose-500"
+                                            required
+                                        />
+                                        <button type="submit" className="bg-rose-500 hover:bg-rose-600 text-white text-xs font-semibold px-3 py-2 rounded-xl">
+                                            Забанить
+                                        </button>
+                                    </form>
+
+                                    {Object.keys(bannedUsers).length > 0 && (
+                                        <div className="space-y-2 pt-1">
+                                            {Object.keys(bannedUsers).map(username => (
+                                                <div key={username} className="flex justify-between items-center bg-slate-50 p-2 rounded-xl border text-xs">
+                                                    <span className="font-bold text-slate-800">@{username}</span>
+                                                    <button 
+                                                        onClick={() => unbanUser(username)}
+                                                        className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-2.5 py-1 rounded-lg font-semibold transition">
+                                                        Разбанить
+                                                    </button>
+                                                </div>
+                                            ))}
                                         </div>
                                     )}
                                 </div>
@@ -563,26 +573,6 @@
                                             </div>
                                         ))}
                                     </div>
-                                </div>
-
-                                <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
-                                    <h3 className="text-xs font-bold text-rose-600">Черный список (Банлист)</h3>
-                                    {Object.keys(bannedUsers).length === 0 ? (
-                                        <p className="text-xs text-slate-400 py-2">Список забаненных пуст.</p>
-                                    ) : (
-                                        <div className="space-y-2">
-                                            {Object.keys(bannedUsers).map(username => (
-                                                <div key={username} className="flex justify-between items-center bg-slate-50 p-2 rounded-xl border text-xs">
-                                                    <span className="font-bold text-slate-800">@{username}</span>
-                                                    <button 
-                                                        onClick={() => unbanUser(username)}
-                                                        className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-2.5 py-1 rounded-lg font-semibold transition">
-                                                        Разбанить
-                                                    </button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                         )}
@@ -663,13 +653,6 @@
                                                                 </button>
                                                             </>
                                                         )}
-                                                        {isAdmin() && item.authorUsername && item.authorUsername.toLowerCase() !== ROOT_ADMIN.toLowerCase() && (
-                                                            <button 
-                                                                onClick={() => banUser(item.authorUsername)}
-                                                                className="bg-slate-100 text-slate-600 hover:bg-rose-100 hover:text-rose-600 text-[11px] px-2 py-1 rounded-lg font-medium transition" title="Забанить автора">
-                                                                🔨
-                                                            </button>
-                                                        )}
                                                     </div>
                                                 </div>
                                             </div>
@@ -679,73 +662,12 @@
                             </div>
                         )}
 
-                        {/* БИБЛИОТЕКА */}
+                        {/* БИБЛИОТЕКА (В разработке) */}
                         {activeTab === 'library' && (
-                            <div className="space-y-3">
-                                <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider px-1">Библиотека</h2>
-                                {currentUser && hasClass() && !isBanned() && (
-                                    <form onSubmit={addBook} className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-2.5">
-                                        <input 
-                                            type="text" 
-                                            placeholder="Название книги" 
-                                            value={newBookTitle}
-                                            onChange={(e) => setNewBookTitle(e.target.value)}
-                                            className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500 text-slate-800"
-                                        />
-                                        <input 
-                                            type="text" 
-                                            placeholder="Автор" 
-                                            value={newBookAuthor}
-                                            onChange={(e) => setNewBookAuthor(e.target.value)}
-                                            className="w-full text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-blue-500 text-slate-800"
-                                        />
-                                        <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-2.5 rounded-xl shadow-sm transition">
-                                            Добавить книгу
-                                        </button>
-                                    </form>
-                                )}
-                                <div className="space-y-2.5">
-                                    {books.length === 0 ? (
-                                        <div className="text-center py-10 text-slate-400 text-xs">Библиотека пока пуста.</div>
-                                    ) : (
-                                        books.map(b => (
-                                            <div key={b.firebaseId} className="p-3.5 rounded-2xl border border-slate-200/80 bg-white shadow-sm flex justify-between items-center">
-                                                <div>
-                                                    <h3 className="font-semibold text-slate-900 text-xs">{b.title}</h3>
-                                                    <p className="text-[11px] text-slate-500 mt-0.5">{b.author} • <span className="text-blue-600 font-medium">{b.classStr}</span></p>
-                                                </div>
-                                                <div className="flex gap-1.5 items-center">
-                                                    <button 
-                                                        onClick={() => openTelegramChat(b.holderUsername, b.holderTgId, b.title, 'Книга')}
-                                                        className="bg-sky-50 text-sky-600 text-[11px] px-2.5 py-1.5 rounded-lg font-medium">
-                                                        Взять
-                                                    </button>
-                                                    {canDeleteOrEdit(b.holderUsername, b.holderTgId) && (
-                                                        <>
-                                                            <button 
-                                                                onClick={() => startEditing(b, 'book')}
-                                                                className="bg-amber-50 text-amber-600 hover:bg-amber-100 text-[11px] px-2 py-1 rounded-lg font-medium transition" title="Редактировать">
-                                                                ✏️
-                                                            </button>
-                                                            <button 
-                                                                onClick={() => removeBook(b.firebaseId)}
-                                                                className="bg-rose-50 text-rose-600 text-[11px] px-2.5 py-1.5 rounded-lg font-medium">
-                                                                Удалить
-                                                            </button>
-                                                        </>
-                                                    )}
-                                                    {isAdmin() && b.holderUsername && b.holderUsername.toLowerCase() !== ROOT_ADMIN.toLowerCase() && (
-                                                        <button 
-                                                            onClick={() => banUser(b.holderUsername)}
-                                                            className="bg-slate-100 text-slate-600 hover:bg-rose-100 hover:text-rose-600 text-[11px] px-2 py-1 rounded-lg transition" title="Забанить автора">
-                                                            🔨
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
+                            <div className="flex flex-col items-center justify-center py-20 space-y-2 text-center">
+                                <div className="text-3xl">📚</div>
+                                <h2 className="text-sm font-bold text-slate-800">Библиотека</h2>
+                                <p className="text-xs text-slate-400">Раздел находится в разработке...</p>
                             </div>
                         )}
 
@@ -828,13 +750,6 @@
                                                                     </button>
                                                                 </>
                                                             )}
-                                                            {isAdmin() && p.authorUsername && p.authorUsername.toLowerCase() !== ROOT_ADMIN.toLowerCase() && (
-                                                                <button 
-                                                                    onClick={() => banUser(p.authorUsername)}
-                                                                    className="bg-slate-100 text-slate-600 hover:bg-rose-100 hover:text-rose-600 text-[11px] px-2 py-0.5 rounded-md transition" title="Забанить автора">
-                                                                    🔨
-                                                                </button>
-                                                            )}
                                                         </div>
                                                     </div>
 
@@ -899,9 +814,7 @@
                                     </div>
                                     {editingItem.type !== 'post' && (
                                         <div>
-                                            <label className="text-[11px] text-slate-500 font-medium block mb-1">
-                                                {editingItem.type === 'lost' ? 'Описание' : 'Автор книги'}
-                                            </label>
+                                            <label className="text-[11px] text-slate-500 font-medium block mb-1">Описание</label>
                                             <input 
                                                 type="text" 
                                                 value={editDesc}
@@ -910,27 +823,25 @@
                                             />
                                         </div>
                                     )}
-                                    {editingItem.type !== 'book' && (
-                                        <div className="space-y-1.5">
-                                            <label className="text-[11px] text-slate-500 font-medium block">Фотография</label>
-                                            {editImage && (
-                                                <div className="relative w-full h-24 bg-slate-900 rounded-xl overflow-hidden flex items-center justify-center">
-                                                    <img src={editImage} alt="Превью" className="w-full h-full object-contain" />
-                                                </div>
-                                            )}
-                                            <div className="flex gap-2 items-center">
-                                                <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-600 text-[11px] px-2.5 py-1.5 rounded-xl font-medium border transition flex items-center gap-1">
-                                                    📷 Изменить фото
-                                                    <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setEditImage)} className="hidden" />
-                                                </label>
-                                                {editImage && (
-                                                    <button type="button" onClick={() => setEditImage('')} className="bg-rose-50 text-rose-600 hover:bg-rose-100 text-[11px] px-2.5 py-1.5 rounded-xl font-medium transition">
-                                                        Удалить фото
-                                                    </button>
-                                                )}
+                                    <div className="space-y-1.5">
+                                        <label className="text-[11px] text-slate-500 font-medium block">Фотография</label>
+                                        {editImage && (
+                                            <div className="relative w-full h-24 bg-slate-900 rounded-xl overflow-hidden flex items-center justify-center">
+                                                <img src={editImage} alt="Превью" className="w-full h-full object-contain" />
                                             </div>
+                                        )}
+                                        <div className="flex gap-2 items-center">
+                                            <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-600 text-[11px] px-2.5 py-1.5 rounded-xl font-medium border transition flex items-center gap-1">
+                                                📷 Изменить фото
+                                                <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setEditImage)} className="hidden" />
+                                            </label>
+                                            {editImage && (
+                                                <button type="button" onClick={() => setEditImage('')} className="bg-rose-50 text-rose-600 hover:bg-rose-100 text-[11px] px-2.5 py-1.5 rounded-xl font-medium transition">
+                                                    Удалить фото
+                                                </button>
+                                            )}
                                         </div>
-                                    )}
+                                    </div>
                                     <div className="pt-1 flex gap-2">
                                         <button 
                                             type="button" 
@@ -949,7 +860,7 @@
                         </div>
                     )}
 
-                    {/* Модальное окно первого входа / регистрации */}
+                    {/* Модальное окно первого входа */}
                     {showAuthModal && (
                         <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                             <div className="bg-white border border-slate-200 rounded-3xl p-5 w-full max-w-xs space-y-3.5 shadow-xl">
@@ -1025,7 +936,7 @@
                         </div>
                     )}
 
-                    {/* Модальное окно профиля (с запросом на модерацию админу) */}
+                    {/* Модальное окно профиля */}
                     {showProfileModal && (
                         <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                             <div className="bg-white border border-slate-200 rounded-3xl p-5 w-full max-w-xs space-y-3.5 shadow-xl">
