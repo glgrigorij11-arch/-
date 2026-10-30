@@ -83,7 +83,7 @@
 
             const [toastMessage, setToastMessage] = useState(null);
 
-            const showNotification = (text, duration = 3000) => {
+            const showNotification = (text, duration = 2000) => {
                 setToastMessage(text);
                 setTimeout(() => { setToastMessage(null); }, duration);
             };
@@ -380,7 +380,6 @@
                 if (!hasClass()) { showNotification("Укажите свой класс в профиле."); setShowProfileModal(true); return; }
                 if (isBanned()) { showNotification("Вы забанены."); return; }
                 
-                // Проверка на заполненность названия
                 if (!newLostTitle.trim()) {
                     showNotification("⚠️ Заполните название вещи!", 2000);
                     return;
@@ -416,7 +415,6 @@
                 if (!hasClass()) { showNotification("Укажите свой класс в профиле."); setShowProfileModal(true); return; }
                 if (isBanned()) { showNotification("Вы забанены."); return; }
                 
-                // Проверка на заполненность текста поста
                 if (!newPostText.trim()) {
                     showNotification("⚠️ Заполните текст поста!", 2000);
                     return;
