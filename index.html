@@ -84,7 +84,7 @@
 
             const [toastMessage, setToastMessage] = useState(null);
 
-            const showNotification = (text, duration = 2000) => {
+            const showNotification = (text, duration = 2500) => {
                 setToastMessage(text);
                 setTimeout(() => { setToastMessage(null); }, duration);
             };
@@ -103,6 +103,7 @@
             const [posts, setPosts] = useState([]);
             const [bannedUsers, setBannedUsers] = useState({});
             const [adminUsers, setAdminUsers] = useState({});
+            const [nameRequests, setNameRequests] = useState([]);
 
             const [newLostTitle, setNewLostTitle] = useState('');
             const [newLostDesc, setNewLostDesc] = useState('');
@@ -166,6 +167,11 @@
                 db.ref('admin_users').on('value', (snapshot) => {
                     setAdminUsers(snapshot.val() || {});
                 });
+
+                db.ref('name_requests').on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    setNameRequests(data ? Object.keys(data).map(key => ({ requestId: key, ...data[key] })) : []);
+                });
             }, []);
 
             const isBanned = () => {
@@ -173,10 +179,15 @@
                 return !!bannedUsers[currentUser.username.toLowerCase()];
             };
 
+            const isRootAdmin = () => {
+                if (!currentUser || !currentUser.username) return false;
+                return currentUser.username.toLowerCase() === ROOT_ADMIN.toLowerCase();
+            };
+
             const isAdmin = () => {
                 if (!currentUser || !currentUser.username) return false;
                 const tag = currentUser.username.toLowerCase();
-                return tag === ROOT_ADMIN.toLowerCase() || !!adminUsers[tag];
+                return isRootAdmin() || !!adminUsers[tag];
             };
 
             const hasClass = () => {
@@ -189,7 +200,7 @@
 
             const checkRegistrationOrPrompt = () => {
                 if (!isFullyRegistered()) {
-                    showNotification("⚠️ Укажите Имя и Фамилию для выполнения этого действия!");
+                    showNotification("⚠️ Укажите Имя и Фамилию для выполнения действия!");
                     if (currentUser) {
                         setAuthFirstName(currentUser.firstName || '');
                         setAuthLastName(currentUser.lastName || '');
@@ -209,7 +220,7 @@
                 const cleanTag = newAdminInput.replace('@', '').trim().toLowerCase();
                 db.ref(`admin_users/${cleanTag}`).set(true);
                 setNewAdminInput('');
-                showNotification(`Администратор @${cleanTag} успешно добавлен!`);
+                showNotification(`Администратор @${cleanTag} добавлен!`);
             };
 
             const removeAdmin = (username) => {
@@ -234,17 +245,38 @@
                 showNotification(`Пользователь @${username} разбанен.`);
             };
 
+            // Обработка заявок администратором
+            const approveNameRequest = (req) => {
+                const updatedUser = {
+                    firstName: req.newFirstName,
+                    lastName: req.newLastName,
+                    username: req.username,
+                    grade: req.grade,
+                    letter: req.letter,
+                    avatar: (req.newFirstName || req.username || 'У').charAt(0).toUpperCase(),
+                    tgId: req.tgId
+                };
+
+                // Если это текущий залогиненный пользователь
+                if (currentUser && currentUser.username.toLowerCase() === req.username.toLowerCase()) {
+                    setCurrentUser(updatedUser);
+                    localStorage.setItem('lyceum_user', JSON.stringify(updatedUser));
+                }
+
+                db.ref(`name_requests/${req.requestId}`).remove();
+                showNotification(`Заявка для @${req.username} одобрена! ✅`);
+            };
+
+            const rejectNameRequest = (requestId) => {
+                db.ref(`name_requests/${requestId}`).remove();
+                showNotification("Заявка отклонена ❌");
+            };
+
             const handleSaveProfile = (e) => {
                 e.preventDefault();
                 const cleanTag = authUsername.replace('@', '').trim().toLowerCase();
-                if (!cleanTag) {
-                    showNotification("Укажите Telegram @username.");
-                    return;
-                }
-                if (!authGrade || !authLetter) {
-                    showNotification("Выберите класс и параллель.");
-                    return;
-                }
+                if (!cleanTag) { showNotification("Укажите Telegram @username."); return; }
+                if (!authGrade || !authLetter) { showNotification("Выберите класс."); return; }
 
                 const newProfileData = {
                     firstName: authFirstName.trim(),
@@ -256,7 +288,18 @@
                     tgId: currentUser ? currentUser.tgId : Date.now()
                 };
 
-                if (!currentUser || !currentUser.username || !currentUser.grade || isAdmin()) {
+                // 1. Главный админ меняет профиль без подтверждения кому угодно и себе
+                if (isRootAdmin()) {
+                    setCurrentUser(newProfileData);
+                    localStorage.setItem('lyceum_user', JSON.stringify(newProfileData));
+                    setShowAuthModal(false);
+                    setShowProfileModal(false);
+                    showNotification("Профиль сохранен (Главный Админ)!");
+                    return;
+                }
+
+                // 2. Первоначальный ввод при регистрации
+                if (!currentUser || !currentUser.firstName) {
                     setCurrentUser(newProfileData);
                     localStorage.setItem('lyceum_user', JSON.stringify(newProfileData));
                     setShowAuthModal(false);
@@ -265,12 +308,33 @@
                     return;
                 }
 
-                const requestText = `Здравствуйте! Прошу подтвердить изменение моих данных в Лицейском Хабе:\nИмя: ${newProfileData.firstName} ${newProfileData.lastName}\nUsername: @${newProfileData.username}\nКласс: ${newProfileData.grade}-${newProfileData.letter}`;
-                const encoded = encodeURIComponent(requestText);
-                
-                window.open(`https://t.me/${ROOT_ADMIN}?text=${encoded}`, '_blank');
-                setShowProfileModal(false);
-                showNotification("Запрос отправлен администратору в Telegram");
+                // 3. Запрос на изменение имени/фамилии у обычного пользователя или обычного админа
+                const hasNameChanged = currentUser.firstName !== newProfileData.firstName || currentUser.lastName !== newProfileData.lastName;
+
+                if (hasNameChanged) {
+                    const requestData = {
+                        username: cleanTag,
+                        currentFirstName: currentUser.firstName || '',
+                        currentLastName: currentUser.lastName || '',
+                        newFirstName: newProfileData.firstName,
+                        newLastName: newProfileData.lastName,
+                        grade: authGrade,
+                        letter: authLetter,
+                        tgId: currentUser.tgId || Date.now(),
+                        date: new Date().toLocaleDateString()
+                    };
+
+                    db.ref(`name_requests/${cleanTag}`).set(requestData).then(() => {
+                        setShowProfileModal(false);
+                        showNotification("Заявка на смену имени отправлена админам! 📩");
+                    });
+                } else {
+                    // Изменялись только класс или username
+                    setCurrentUser(newProfileData);
+                    localStorage.setItem('lyceum_user', JSON.stringify(newProfileData));
+                    setShowProfileModal(false);
+                    showNotification("Данные обновлены!");
+                }
             };
 
             const canDeleteOrEdit = (itemAuthorUsername, itemAuthorTgId) => {
@@ -282,20 +346,12 @@
 
             const removeLostItem = (firebaseId) => {
                 if (!checkRegistrationOrPrompt()) return;
-                db.ref(`lost_items/${firebaseId}`).remove().then(() => {
-                    showNotification("Объявление удалено!");
-                }).catch(() => {
-                    showNotification("Ошибка при удалении");
-                });
+                db.ref(`lost_items/${firebaseId}`).remove().then(() => showNotification("Объявление удалено!"));
             };
 
             const removePost = (firebaseId) => {
                 if (!checkRegistrationOrPrompt()) return;
-                db.ref(`posts/${firebaseId}`).remove().then(() => {
-                    showNotification("Пост удален!");
-                }).catch(() => {
-                    showNotification("Ошибка при удалении");
-                });
+                db.ref(`posts/${firebaseId}`).remove().then(() => showNotification("Пост удален!"));
             };
 
             const toggleLostStatus = (firebaseId, currentStatus) => {
@@ -380,8 +436,6 @@
                     setNewLostDesc('');
                     setNewLostImage('');
                     showNotification("Успешно опубликовано! 🎉");
-                }).catch(() => {
-                    showNotification("Ошибка публикации");
                 });
             };
 
@@ -410,8 +464,6 @@
                     setNewPostText('');
                     setNewPostImage('');
                     showNotification("Пост опубликован! 🎉");
-                }).catch(() => {
-                    showNotification("Ошибка публикации");
                 });
             };
 
@@ -497,7 +549,7 @@
                                 <button 
                                     onClick={() => setActiveTab('admin-panel')}
                                     className={`text-xs font-semibold px-3 py-1.5 rounded-xl border transition-all ${activeTab === 'admin-panel' ? 'bg-blue-600 text-white border-transparent' : 'bg-blue-500/10 text-blue-400 border-blue-500/20'}`}>
-                                    🛡️ Админка
+                                    🛡️ Админка {nameRequests.length > 0 && <span className="bg-rose-500 text-white text-[9px] px-1.5 py-0.5 rounded-full ml-1">{nameRequests.length}</span>}
                                 </button>
                             )}
 
@@ -552,34 +604,70 @@
                             <div className="space-y-4 apple-tab-view">
                                 <h2 className="text-xs font-bold text-blue-500 uppercase tracking-widest px-1">Панель администратора</h2>
                                 
+                                {/* Раздел заявок на смену имени */}
                                 <div className={`p-4 rounded-2xl border space-y-3 ${cardClass}`}>
-                                    <h3 className="text-xs font-bold text-blue-400">Назначить администратора</h3>
-                                    <form onSubmit={addAdminByUsername} className="flex gap-2">
-                                        <input 
-                                            type="text" 
-                                            placeholder="username (без @)" 
-                                            value={newAdminInput} 
-                                            onChange={e => setNewAdminInput(e.target.value)} 
-                                            className={`flex-1 text-xs p-2.5 rounded-xl border ${inputClass}`} 
-                                            required 
-                                        />
-                                        <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3.5 py-2.5 rounded-xl transition">
-                                            Добавить
-                                        </button>
-                                    </form>
-
-                                    <div className="space-y-1 pt-1">
-                                        <div className="flex justify-between items-center text-xs p-2 bg-slate-900/50 rounded-xl">
-                                            <span className="font-bold">@{ROOT_ADMIN} <span className="text-[10px] text-blue-400">(Главный)</span></span>
+                                    <h3 className="text-xs font-bold text-amber-400 flex items-center justify-between">
+                                        <span>Заявки на смену имени</span>
+                                        <span className="bg-amber-500/20 text-amber-300 text-[10px] px-2 py-0.5 rounded-full">{nameRequests.length}</span>
+                                    </h3>
+                                    {nameRequests.length === 0 ? (
+                                        <p className="text-xs text-slate-500">Нет новых заявок.</p>
+                                    ) : (
+                                        <div className="space-y-2.5">
+                                            {nameRequests.map(req => (
+                                                <div key={req.requestId} className="p-3 bg-slate-900/60 rounded-xl border border-slate-700/60 space-y-2">
+                                                    <div className="flex justify-between items-start text-xs">
+                                                        <div>
+                                                            <span className="font-bold text-blue-400">@{req.username}</span>
+                                                            <span className="text-[10px] text-slate-400 ml-2">({req.grade}-{req.letter})</span>
+                                                        </div>
+                                                        <span className="text-[10px] text-slate-500">{req.date}</span>
+                                                    </div>
+                                                    <div className="text-xs space-y-0.5">
+                                                        <div className="text-slate-400 line-through">Было: {req.currentFirstName} {req.currentLastName}</div>
+                                                        <div className="font-semibold text-emerald-400">Станет: {req.newFirstName} {req.newLastName}</div>
+                                                    </div>
+                                                    <div className="flex gap-2 pt-1">
+                                                        <button onClick={() => approveNameRequest(req)} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold py-1.5 rounded-lg transition">Подтвердить ✅</button>
+                                                        <button onClick={() => rejectNameRequest(req.requestId)} className="flex-1 bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 text-[11px] font-semibold py-1.5 rounded-lg transition">Отклонить ❌</button>
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
-                                        {Object.keys(adminUsers).map(adminTag => (
-                                            <div key={adminTag} className="flex justify-between items-center text-xs p-2 bg-slate-900/50 rounded-xl">
-                                                <span>@{adminTag}</span>
-                                                <button onClick={() => removeAdmin(adminTag)} className="text-rose-400 font-bold">Удалить</button>
-                                            </div>
-                                        ))}
-                                    </div>
+                                    )}
                                 </div>
+
+                                {/* Назначение админов (доступно главному) */}
+                                {isRootAdmin() && (
+                                    <div className={`p-4 rounded-2xl border space-y-3 ${cardClass}`}>
+                                        <h3 className="text-xs font-bold text-blue-400">Назначить администратора</h3>
+                                        <form onSubmit={addAdminByUsername} className="flex gap-2">
+                                            <input 
+                                                type="text" 
+                                                placeholder="username (без @)" 
+                                                value={newAdminInput} 
+                                                onChange={e => setNewAdminInput(e.target.value)} 
+                                                className={`flex-1 text-xs p-2.5 rounded-xl border ${inputClass}`} 
+                                                required 
+                                            />
+                                            <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3.5 py-2.5 rounded-xl transition">
+                                                Добавить
+                                            </button>
+                                        </form>
+
+                                        <div className="space-y-1 pt-1">
+                                            <div className="flex justify-between items-center text-xs p-2 bg-slate-900/50 rounded-xl">
+                                                <span className="font-bold">@{ROOT_ADMIN} <span className="text-[10px] text-blue-400">(Главный)</span></span>
+                                            </div>
+                                            {Object.keys(adminUsers).map(adminTag => (
+                                                <div key={adminTag} className="flex justify-between items-center text-xs p-2 bg-slate-900/50 rounded-xl">
+                                                    <span>@{adminTag}</span>
+                                                    <button onClick={() => removeAdmin(adminTag)} className="text-rose-400 font-bold">Удалить</button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
 
                                 <div className={`p-4 rounded-2xl border space-y-3 ${cardClass}`}>
                                     <h3 className="text-xs font-bold text-rose-500">Бан пользователей</h3>
@@ -814,7 +902,7 @@
                         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
                             <div className={`border rounded-[32px] p-6 w-full max-w-xs space-y-4 apple-modal-anim ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
                                 <h3 className="font-bold text-center text-sm">Добро пожаловать в Лицейский Хаб</h3>
-                                <p className="text-[11px] text-slate-400 text-center">Заполните данные для полной регистрации</p>
+                                <p className="text-[11px] text-slate-400 text-center">Заполните данные для регистрации</p>
                                 <form onSubmit={handleSaveProfile} className="space-y-3 w-full">
                                     <div className="flex gap-2 w-full">
                                         <input 
@@ -874,12 +962,12 @@
                         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
                             <div className={`border rounded-[32px] p-6 w-full max-w-xs space-y-4 apple-modal-anim ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
                                 <h3 className="font-bold text-center text-sm">
-                                    {isAdmin() ? "Изменение данных (Админ)" : "Регистрация / Профиль"}
+                                    {isRootAdmin() ? "Изменение данных (Главный Админ)" : "Регистрация / Профиль"}
                                 </h3>
                                 <p className="text-[10px] text-slate-400 text-center leading-relaxed">
                                     {!isFullyRegistered() 
-                                        ? "Заполните Имя и Фамилию для создания постов и комментариев" 
-                                        : (isAdmin() ? "Изменение данных без подтверждения" : "Смена имени или класса требует подтверждения администратора")}
+                                        ? "Заполните Имя и Фамилию для выполнения действий" 
+                                        : (isRootAdmin() ? "Вы можете менять любые данные без подтверждения" : "Смена имени/фамилии будет отправлена администраторам на подтверждение")}
                                 </p>
                                 <form onSubmit={handleSaveProfile} className="space-y-3 w-full">
                                     <div className="flex gap-2 w-full">
@@ -925,7 +1013,7 @@
                                     <div className="flex gap-2 pt-1 w-full">
                                         <button type="button" onClick={() => setShowProfileModal(false)} className="flex-1 text-xs py-3 rounded-xl bg-slate-800 text-slate-300">Отмена</button>
                                         <button type="submit" className="flex-1 bg-blue-600 text-white text-xs py-3 rounded-xl font-semibold">
-                                            {isAdmin() || !isFullyRegistered() ? "Сохранить" : "Запросить"}
+                                            {isRootAdmin() || !currentUser.firstName ? "Сохранить" : "Запросить"}
                                         </button>
                                     </div>
                                 </form>
