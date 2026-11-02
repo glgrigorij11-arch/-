@@ -94,7 +94,6 @@
             const [authGrade, setAuthGrade] = useState('');
             const [authLetter, setAuthLetter] = useState('');
 
-            // Состояние редактирования пользователя для Главного Админа
             const [editTargetUsername, setEditTargetUsername] = useState('');
             const [targetFirstName, setTargetFirstName] = useState('');
             const [targetLastName, setTargetLastName] = useState('');
@@ -269,7 +268,6 @@
                 showNotification(`Пользователь @${username} разбанен.`);
             };
 
-            // Главный админ принудительно редактирует любого пользователя
             const handleRootAdminUserEdit = (e) => {
                 e.preventDefault();
                 if (!editTargetUsername.trim()) { showNotification("Укажите username пользователя!"); return; }
@@ -279,7 +277,6 @@
                 }
                 const cleanTag = editTargetUsername.replace('@', '').trim().toLowerCase();
 
-                // Если меняем себе же
                 if (currentUser && currentUser.username.toLowerCase() === cleanTag) {
                     const updatedSelf = {
                         ...currentUser,
@@ -293,7 +290,6 @@
                     localStorage.setItem('lyceum_user', JSON.stringify(updatedSelf));
                 }
 
-                // Очищаем существующую заявку, если была
                 db.ref(`name_requests/${cleanTag}`).remove();
 
                 setEditTargetUsername('');
@@ -700,7 +696,7 @@
                                 {isRootAdmin() && (
                                     <div className={`p-4 rounded-2xl border space-y-3 ${cardClass}`}>
                                         <h3 className="text-xs font-bold text-indigo-400">Управление пользователем (Главный Админ)</h3>
-                                        <form onSubmit={handleRootAdminUserEdit} className="space-y-2.5">
+                                        <form onSubmit={handleRootAdminUserEdit} className="space-y-2.5 w-full">
                                             <input 
                                                 type="text" 
                                                 placeholder="Username ученика (без @)" 
@@ -709,13 +705,13 @@
                                                 className={`w-full text-xs p-2.5 rounded-xl border ${inputClass}`} 
                                                 required 
                                             />
-                                            <div className="flex gap-2">
+                                            <div className="flex gap-2 w-full">
                                                 <input 
                                                     type="text" 
                                                     placeholder="Новое имя" 
                                                     value={targetFirstName} 
                                                     onChange={e => setTargetFirstName(e.target.value)} 
-                                                    className={`flex-1 text-xs p-2.5 rounded-xl border ${inputClass}`} 
+                                                    className={`flex-1 min-w-0 text-xs p-2.5 rounded-xl border focus:outline-none focus:border-blue-500 ${inputClass}`} 
                                                     required 
                                                 />
                                                 <input 
@@ -723,16 +719,16 @@
                                                     placeholder="Новая фамилия" 
                                                     value={targetLastName} 
                                                     onChange={e => setTargetLastName(e.target.value)} 
-                                                    className={`flex-1 text-xs p-2.5 rounded-xl border ${inputClass}`} 
+                                                    className={`flex-1 min-w-0 text-xs p-2.5 rounded-xl border focus:outline-none focus:border-blue-500 ${inputClass}`} 
                                                     required 
                                                 />
                                             </div>
-                                            <div className="flex gap-2">
-                                                <select value={targetGrade} onChange={e => setTargetGrade(e.target.value)} className={`flex-1 text-xs p-2.5 rounded-xl border ${inputClass}`} required>
+                                            <div className="flex gap-2 w-full">
+                                                <select value={targetGrade} onChange={e => setTargetGrade(e.target.value)} className={`flex-1 min-w-0 text-xs p-2.5 rounded-xl border ${inputClass}`} required>
                                                     <option value="">Параллель</option>
                                                     {['5','6','7','8','9','10','11'].map(g => <option key={g} value={g}>{g}</option>)}
                                                 </select>
-                                                <select value={targetLetter} onChange={e => setTargetLetter(e.target.value)} className={`flex-1 text-xs p-2.5 rounded-xl border ${inputClass}`} required>
+                                                <select value={targetLetter} onChange={e => setTargetLetter(e.target.value)} className={`flex-1 min-w-0 text-xs p-2.5 rounded-xl border ${inputClass}`} required>
                                                     <option value="">Буква</option>
                                                     {getAvailableLetters(targetGrade).map(l => <option key={l} value={l}>{l}</option>)}
                                                 </select>
@@ -862,7 +858,6 @@
                                                 </div>
                                                 {item.desc && <p className="text-xs text-slate-300">{item.desc}</p>}
                                                 <div className="flex justify-between items-center pt-2 border-t border-slate-700/40">
-                                                    {/* Отображается ТОЛЬКО Имя и Фамилия автора */}
                                                     <span className="text-[11px] font-medium text-slate-300">{item.author} ({item.classStr})</span>
                                                     
                                                     <div className="flex gap-1.5 items-center">
@@ -941,7 +936,6 @@
                                                         </div>
                                                         <div>
                                                             <div className="flex items-center gap-1">
-                                                                {/* Отображается ТОЛЬКО Имя и Фамилия */}
                                                                 <span className="text-xs font-bold">{p.author}</span>
                                                                 {p.isPinned && <span className="text-[10px] text-blue-400 font-bold">📌</span>}
                                                             </div>
@@ -1033,7 +1027,6 @@
                         )}
                     </main>
 
-                    {/* Окно первоначальной регистрации */}
                     {showAuthModal && (
                         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
                             <div className={`border rounded-[32px] p-6 w-full max-w-xs space-y-4 apple-modal-anim ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
@@ -1080,7 +1073,6 @@
                         </div>
                     )}
 
-                    {/* Окно профиля (только Имя, Фамилия и Класс) */}
                     {showProfileModal && (
                         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
                             <div className={`border rounded-[32px] p-6 w-full max-w-xs space-y-4 apple-modal-anim ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
