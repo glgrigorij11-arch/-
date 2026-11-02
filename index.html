@@ -91,9 +91,15 @@
 
             const [authFirstName, setAuthFirstName] = useState('');
             const [authLastName, setAuthLastName] = useState('');
-            const [authUsername, setAuthUsername] = useState('');
             const [authGrade, setAuthGrade] = useState('');
             const [authLetter, setAuthLetter] = useState('');
+
+            // Состояние редактирования пользователя для Главного Админа
+            const [editTargetUsername, setEditTargetUsername] = useState('');
+            const [targetFirstName, setTargetFirstName] = useState('');
+            const [targetLastName, setTargetLastName] = useState('');
+            const [targetGrade, setTargetGrade] = useState('');
+            const [targetLetter, setTargetLetter] = useState('');
 
             const [newAdminInput, setNewAdminInput] = useState('');
             const [commentTexts, setCommentTexts] = useState({});
@@ -105,7 +111,6 @@
             const [adminUsers, setAdminUsers] = useState({});
             const [nameRequests, setNameRequests] = useState([]);
 
-            // Состояние для подтверждения удаления конкретного элемента
             const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
             const [newLostTitle, setNewLostTitle] = useState('');
@@ -122,8 +127,9 @@
 
             useEffect(() => {
                 const savedUser = localStorage.getItem('lyceum_user');
+                let parsedUser = null;
                 if (savedUser) {
-                    try { setCurrentUser(JSON.parse(savedUser)); } catch(e){}
+                    try { parsedUser = JSON.parse(savedUser); } catch(e){}
                 }
 
                 if (window.Telegram && window.Telegram.WebApp) {
@@ -133,21 +139,37 @@
 
                     if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
                         const tgUser = tg.initDataUnsafe.user;
-                        if (!savedUser) {
-                            const defaultUser = {
-                                firstName: '',
-                                lastName: '',
-                                username: tgUser.username ? tgUser.username.toLowerCase() : '',
-                                tgId: tgUser.id,
-                                grade: '',
-                                letter: '',
-                                avatar: (tgUser.username || 'У').charAt(0).toUpperCase()
-                            };
-                            setCurrentUser(defaultUser);
+                        const realTgTag = tgUser.username ? tgUser.username.toLowerCase() : ROOT_ADMIN.toLowerCase();
+                        
+                        const mergedUser = {
+                            firstName: parsedUser ? parsedUser.firstName : '',
+                            lastName: parsedUser ? parsedUser.lastName : '',
+                            username: realTgTag,
+                            tgId: tgUser.id,
+                            grade: parsedUser ? parsedUser.grade : '',
+                            letter: parsedUser ? parsedUser.letter : '',
+                            avatar: (parsedUser && parsedUser.firstName ? parsedUser.firstName : realTgTag).charAt(0).toUpperCase()
+                        };
+                        setCurrentUser(mergedUser);
+                        if (!parsedUser || !parsedUser.firstName) {
                             setShowAuthModal(true);
                         }
+                    } else if (parsedUser) {
+                        setCurrentUser(parsedUser);
                     }
-                } else if (!savedUser) {
+                } else if (parsedUser) {
+                    setCurrentUser(parsedUser);
+                } else {
+                    const defaultUser = {
+                        firstName: '',
+                        lastName: '',
+                        username: ROOT_ADMIN.toLowerCase(),
+                        tgId: Date.now(),
+                        grade: '',
+                        letter: '',
+                        avatar: 'A'
+                    };
+                    setCurrentUser(defaultUser);
                     setShowAuthModal(true);
                 }
             }, []);
@@ -203,11 +225,10 @@
 
             const checkRegistrationOrPrompt = () => {
                 if (!isFullyRegistered()) {
-                    showNotification("⚠️ Укажите Имя и Фамилию для выполнения действия!");
+                    showNotification("⚠️ Заполните Имя и Фамилию в профиле!");
                     if (currentUser) {
                         setAuthFirstName(currentUser.firstName || '');
                         setAuthLastName(currentUser.lastName || '');
-                        setAuthUsername(currentUser.username || '');
                         setAuthGrade(currentUser.grade || '');
                         setAuthLetter(currentUser.letter || '');
                     }
@@ -228,10 +249,10 @@
 
             const removeAdmin = (username) => {
                 if (username.toLowerCase() === ROOT_ADMIN.toLowerCase()) {
-                    showNotification("Нельзя удалить главного администратора!");
+                    showNotification("Нельзя разжаловать главного администратора!");
                     return;
                 }
-                db.ref(`admin_users/${username}`).remove();
+                db.ref(`admin_users/${username.toLowerCase()}`).remove();
                 showNotification(`Администратор @${username} удален.`);
             };
 
@@ -246,6 +267,41 @@
             const unbanUser = (username) => {
                 db.ref(`banned_users/${username}`).remove();
                 showNotification(`Пользователь @${username} разбанен.`);
+            };
+
+            // Главный админ принудительно редактирует любого пользователя
+            const handleRootAdminUserEdit = (e) => {
+                e.preventDefault();
+                if (!editTargetUsername.trim()) { showNotification("Укажите username пользователя!"); return; }
+                if (!targetFirstName.trim() || !targetLastName.trim() || !targetGrade || !targetLetter) {
+                    showNotification("Заполните все данные пользователя!");
+                    return;
+                }
+                const cleanTag = editTargetUsername.replace('@', '').trim().toLowerCase();
+
+                // Если меняем себе же
+                if (currentUser && currentUser.username.toLowerCase() === cleanTag) {
+                    const updatedSelf = {
+                        ...currentUser,
+                        firstName: targetFirstName.trim(),
+                        lastName: targetLastName.trim(),
+                        grade: targetGrade,
+                        letter: targetLetter,
+                        avatar: targetFirstName.trim().charAt(0).toUpperCase()
+                    };
+                    setCurrentUser(updatedSelf);
+                    localStorage.setItem('lyceum_user', JSON.stringify(updatedSelf));
+                }
+
+                // Очищаем существующую заявку, если была
+                db.ref(`name_requests/${cleanTag}`).remove();
+
+                setEditTargetUsername('');
+                setTargetFirstName('');
+                setTargetLastName('');
+                setTargetGrade('');
+                setTargetLetter('');
+                showNotification(`Данные пользователя @${cleanTag} обновлены! ✅`);
             };
 
             const approveNameRequest = (req) => {
@@ -275,18 +331,16 @@
 
             const handleSaveProfile = (e) => {
                 e.preventDefault();
-                const cleanTag = authUsername.replace('@', '').trim().toLowerCase();
-                if (!cleanTag) { showNotification("Укажите Telegram @username."); return; }
+                if (!authFirstName.trim() || !authLastName.trim()) { showNotification("Укажите Имя и Фамилию."); return; }
                 if (!authGrade || !authLetter) { showNotification("Выберите класс."); return; }
 
                 const newProfileData = {
+                    ...currentUser,
                     firstName: authFirstName.trim(),
                     lastName: authLastName.trim(),
-                    username: cleanTag,
                     grade: authGrade,
                     letter: authLetter,
-                    avatar: (authFirstName || cleanTag || 'У').charAt(0).toUpperCase(),
-                    tgId: currentUser ? currentUser.tgId : Date.now()
+                    avatar: authFirstName.trim().charAt(0).toUpperCase()
                 };
 
                 if (isRootAdmin()) {
@@ -294,7 +348,7 @@
                     localStorage.setItem('lyceum_user', JSON.stringify(newProfileData));
                     setShowAuthModal(false);
                     setShowProfileModal(false);
-                    showNotification("Профиль сохранен (Главный Админ)!");
+                    showNotification("Профиль сохранен!");
                     return;
                 }
 
@@ -311,7 +365,7 @@
 
                 if (hasNameChanged) {
                     const requestData = {
-                        username: cleanTag,
+                        username: currentUser.username,
                         currentFirstName: currentUser.firstName || '',
                         currentLastName: currentUser.lastName || '',
                         newFirstName: newProfileData.firstName,
@@ -322,7 +376,7 @@
                         date: new Date().toLocaleDateString()
                     };
 
-                    db.ref(`name_requests/${cleanTag}`).set(requestData).then(() => {
+                    db.ref(`name_requests/${currentUser.username.toLowerCase()}`).set(requestData).then(() => {
                         setShowProfileModal(false);
                         showNotification("Заявка на смену имени отправлена админам! 📩");
                     });
@@ -341,12 +395,10 @@
                 return isAdmin() || isAuthor;
             };
 
-            // Функция безопасного удаления с подтверждением по крестику
             const handleDeleteAction = (firebaseId, type) => {
                 if (!checkRegistrationOrPrompt()) return;
                 
                 if (confirmDeleteId === firebaseId) {
-                    // Подтверждено — удаляем из базы
                     const path = type === 'lost' ? 'lost_items' : 'posts';
                     db.ref(`${path}/${firebaseId}`).remove().then(() => {
                         setConfirmDeleteId(null);
@@ -355,12 +407,9 @@
                         showNotification("Ошибка удаления");
                     });
                 } else {
-                    // Первый клик — запрашиваем подтверждение
                     setConfirmDeleteId(firebaseId);
-                    showNotification("⚠️ Нажмите крестик еще раз для подтверждения удаления");
-                    setTimeout(() => {
-                        setConfirmDeleteId(null);
-                    }, 4000);
+                    showNotification("⚠️ Нажмите крестик еще раз для подтверждения");
+                    setTimeout(() => { setConfirmDeleteId(null); }, 4000);
                 }
             };
 
@@ -391,7 +440,7 @@
                 } else if (tgId) {
                     window.open(`tg://user?id=${tgId}`, '_blank');
                 } else {
-                    showNotification("Нет username");
+                    showNotification("У пользователя нет Telegram @username");
                 }
             };
 
@@ -506,6 +555,7 @@
                 const q = searchQuery.toLowerCase();
                 return (item.title && item.title.toLowerCase().includes(q)) ||
                        (item.desc && item.desc.toLowerCase().includes(q)) ||
+                       (item.author && item.author.toLowerCase().includes(q)) ||
                        (item.classStr && item.classStr.toLowerCase().includes(q));
             });
 
@@ -568,7 +618,6 @@
                                     onClick={() => {
                                         setAuthFirstName(currentUser.firstName || '');
                                         setAuthLastName(currentUser.lastName || '');
-                                        setAuthUsername(currentUser.username || '');
                                         setAuthGrade(currentUser.grade || '');
                                         setAuthLetter(currentUser.letter || '');
                                         setShowProfileModal(true);
@@ -614,6 +663,7 @@
                             <div className="space-y-4 apple-tab-view">
                                 <h2 className="text-xs font-bold text-blue-500 uppercase tracking-widest px-1">Панель администратора</h2>
                                 
+                                {/* Заявки на смену имени */}
                                 <div className={`p-4 rounded-2xl border space-y-3 ${cardClass}`}>
                                     <h3 className="text-xs font-bold text-amber-400 flex items-center justify-between">
                                         <span>Заявки на смену имени</span>
@@ -646,37 +696,89 @@
                                     )}
                                 </div>
 
+                                {/* Принудительное управление данными пользователя (Главный Админ) */}
                                 {isRootAdmin() && (
                                     <div className={`p-4 rounded-2xl border space-y-3 ${cardClass}`}>
-                                        <h3 className="text-xs font-bold text-blue-400">Назначить администратора</h3>
-                                        <form onSubmit={addAdminByUsername} className="flex gap-2">
+                                        <h3 className="text-xs font-bold text-indigo-400">Управление пользователем (Главный Админ)</h3>
+                                        <form onSubmit={handleRootAdminUserEdit} className="space-y-2.5">
                                             <input 
                                                 type="text" 
-                                                placeholder="username (без @)" 
-                                                value={newAdminInput} 
-                                                onChange={e => setNewAdminInput(e.target.value)} 
-                                                className={`flex-1 text-xs p-2.5 rounded-xl border ${inputClass}`} 
+                                                placeholder="Username ученика (без @)" 
+                                                value={editTargetUsername} 
+                                                onChange={e => setEditTargetUsername(e.target.value)} 
+                                                className={`w-full text-xs p-2.5 rounded-xl border ${inputClass}`} 
                                                 required 
                                             />
-                                            <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3.5 py-2.5 rounded-xl transition">
-                                                Добавить
+                                            <div className="flex gap-2">
+                                                <input 
+                                                    type="text" 
+                                                    placeholder="Новое имя" 
+                                                    value={targetFirstName} 
+                                                    onChange={e => setTargetFirstName(e.target.value)} 
+                                                    className={`flex-1 text-xs p-2.5 rounded-xl border ${inputClass}`} 
+                                                    required 
+                                                />
+                                                <input 
+                                                    type="text" 
+                                                    placeholder="Новая фамилия" 
+                                                    value={targetLastName} 
+                                                    onChange={e => setTargetLastName(e.target.value)} 
+                                                    className={`flex-1 text-xs p-2.5 rounded-xl border ${inputClass}`} 
+                                                    required 
+                                                />
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <select value={targetGrade} onChange={e => setTargetGrade(e.target.value)} className={`flex-1 text-xs p-2.5 rounded-xl border ${inputClass}`} required>
+                                                    <option value="">Параллель</option>
+                                                    {['5','6','7','8','9','10','11'].map(g => <option key={g} value={g}>{g}</option>)}
+                                                </select>
+                                                <select value={targetLetter} onChange={e => setTargetLetter(e.target.value)} className={`flex-1 text-xs p-2.5 rounded-xl border ${inputClass}`} required>
+                                                    <option value="">Буква</option>
+                                                    {getAvailableLetters(targetGrade).map(l => <option key={l} value={l}>{l}</option>)}
+                                                </select>
+                                            </div>
+                                            <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold py-2.5 rounded-xl transition">
+                                                Изменить пользователя
                                             </button>
                                         </form>
-
-                                        <div className="space-y-1 pt-1">
-                                            <div className="flex justify-between items-center text-xs p-2 bg-slate-900/50 rounded-xl">
-                                                <span className="font-bold">@{ROOT_ADMIN} <span className="text-[10px] text-blue-400">(Главный)</span></span>
-                                            </div>
-                                            {Object.keys(adminUsers).map(adminTag => (
-                                                <div key={adminTag} className="flex justify-between items-center text-xs p-2 bg-slate-900/50 rounded-xl">
-                                                    <span>@{adminTag}</span>
-                                                    <button onClick={() => removeAdmin(adminTag)} className="text-rose-400 font-bold">Удалить</button>
-                                                </div>
-                                            ))}
-                                        </div>
                                     </div>
                                 )}
 
+                                {/* Раздел назначения и снятия администраторов */}
+                                <div className={`p-4 rounded-2xl border space-y-3 ${cardClass}`}>
+                                    <h3 className="text-xs font-bold text-blue-400">Управление администраторами</h3>
+                                    <form onSubmit={addAdminByUsername} className="flex gap-2">
+                                        <input 
+                                            type="text" 
+                                            placeholder="username (без @)" 
+                                            value={newAdminInput} 
+                                            onChange={e => setNewAdminInput(e.target.value)} 
+                                            className={`flex-1 text-xs p-2.5 rounded-xl border ${inputClass}`} 
+                                            required 
+                                        />
+                                        <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3.5 py-2.5 rounded-xl transition">
+                                            Назначить
+                                        </button>
+                                    </form>
+
+                                    <div className="space-y-1 pt-1">
+                                        <div className="flex justify-between items-center text-xs p-2 bg-slate-900/50 rounded-xl">
+                                            <span className="font-bold">@{ROOT_ADMIN} <span className="text-[10px] text-blue-400">(Главный)</span></span>
+                                        </div>
+                                        {Object.keys(adminUsers).map(adminTag => (
+                                            <div key={adminTag} className="flex justify-between items-center text-xs p-2 bg-slate-900/50 rounded-xl">
+                                                <span>@{adminTag}</span>
+                                                {isAdmin() && (
+                                                    <button onClick={() => removeAdmin(adminTag)} className="text-rose-400 font-bold hover:underline">
+                                                        Убрать админа
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Бан пользователей */}
                                 <div className={`p-4 rounded-2xl border space-y-3 ${cardClass}`}>
                                     <h3 className="text-xs font-bold text-rose-500">Бан пользователей</h3>
                                     <form onSubmit={(e) => {
@@ -760,9 +862,9 @@
                                                 </div>
                                                 {item.desc && <p className="text-xs text-slate-300">{item.desc}</p>}
                                                 <div className="flex justify-between items-center pt-2 border-t border-slate-700/40">
-                                                    <span className="text-[10px] text-slate-400">{item.author}</span>
+                                                    {/* Отображается ТОЛЬКО Имя и Фамилия автора */}
+                                                    <span className="text-[11px] font-medium text-slate-300">{item.author} ({item.classStr})</span>
                                                     
-                                                    {/* Кнопки одинакового размера: Стрелка, Карандаш, Крестик */}
                                                     <div className="flex gap-1.5 items-center">
                                                         {canDelete && (
                                                             <button 
@@ -839,6 +941,7 @@
                                                         </div>
                                                         <div>
                                                             <div className="flex items-center gap-1">
+                                                                {/* Отображается ТОЛЬКО Имя и Фамилия */}
                                                                 <span className="text-xs font-bold">{p.author}</span>
                                                                 {p.isPinned && <span className="text-[10px] text-blue-400 font-bold">📌</span>}
                                                             </div>
@@ -930,11 +1033,12 @@
                         )}
                     </main>
 
+                    {/* Окно первоначальной регистрации */}
                     {showAuthModal && (
                         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
                             <div className={`border rounded-[32px] p-6 w-full max-w-xs space-y-4 apple-modal-anim ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
                                 <h3 className="font-bold text-center text-sm">Добро пожаловать в Лицейский Хаб</h3>
-                                <p className="text-[11px] text-slate-400 text-center">Заполните данные для регистрации</p>
+                                <p className="text-[11px] text-slate-400 text-center">Укажите Имя, Фамилию и класс</p>
                                 <form onSubmit={handleSaveProfile} className="space-y-3 w-full">
                                     <div className="flex gap-2 w-full">
                                         <input 
@@ -954,25 +1058,11 @@
                                             required
                                         />
                                     </div>
-                                    <div>
-                                        <label className="text-[10px] text-slate-400 font-semibold block mb-1">Telegram @username *</label>
-                                        <div className="relative flex items-center">
-                                            <span className="absolute left-3 text-xs text-slate-400 font-semibold">@</span>
-                                            <input 
-                                                type="text" 
-                                                placeholder="username" 
-                                                value={authUsername.replace(/^@/, '')} 
-                                                onChange={e => setAuthUsername(e.target.value)} 
-                                                className={`w-full text-xs p-2.5 pl-7 rounded-xl border focus:outline-none focus:border-blue-500 ${inputClass}`} 
-                                                required 
-                                            />
-                                        </div>
-                                    </div>
                                     <div className="flex gap-2 w-full">
                                         <div className="flex-1 min-w-0">
-                                            <label className="text-[10px] text-slate-400 font-semibold block mb-1">Класс *</label>
+                                            <label className="text-[10px] text-slate-400 font-semibold block mb-1">Параллель *</label>
                                             <select value={authGrade} onChange={e => setAuthGrade(e.target.value)} className={`w-full text-xs p-2.5 rounded-xl border focus:outline-none focus:border-blue-500 ${inputClass}`} required>
-                                                <option value="">Параллель</option>
+                                                <option value="">Класс</option>
                                                 {['5','6','7','8','9','10','11'].map(g => <option key={g} value={g}>{g}</option>)}
                                             </select>
                                         </div>
@@ -984,22 +1074,23 @@
                                             </select>
                                         </div>
                                     </div>
-                                    <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-3 rounded-xl transition shadow-md">Зарегистрироваться</button>
+                                    <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-3 rounded-xl transition shadow-md">Сохранить</button>
                                 </form>
                             </div>
                         </div>
                     )}
 
+                    {/* Окно профиля (только Имя, Фамилия и Класс) */}
                     {showProfileModal && (
                         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
                             <div className={`border rounded-[32px] p-6 w-full max-w-xs space-y-4 apple-modal-anim ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
                                 <h3 className="font-bold text-center text-sm">
-                                    {isRootAdmin() ? "Изменение данных (Главный Админ)" : "Регистрация / Профиль"}
+                                    {isRootAdmin() ? "Профиль (Главный Админ)" : "Регистрация / Профиль"}
                                 </h3>
                                 <p className="text-[10px] text-slate-400 text-center leading-relaxed">
-                                    {!isFullyRegistered() 
-                                        ? "Заполните Имя и Фамилию для выполнения действий" 
-                                        : (isRootAdmin() ? "Вы можете менять любые данные без подтверждения" : "Смена имени/фамилии будет отправлена администраторам на подтверждение")}
+                                    {isRootAdmin() 
+                                        ? "Редактирование профиля" 
+                                        : "Смена имени или фамилии будет отправлена администраторам на подтверждение"}
                                 </p>
                                 <form onSubmit={handleSaveProfile} className="space-y-3 w-full">
                                     <div className="flex gap-2 w-full">
@@ -1019,20 +1110,6 @@
                                             className={`flex-1 min-w-0 text-xs p-2.5 rounded-xl border focus:outline-none focus:border-blue-500 ${inputClass}`} 
                                             required
                                         />
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] text-slate-400 font-semibold block mb-1">Telegram @username</label>
-                                        <div className="relative flex items-center">
-                                            <span className="absolute left-3 text-xs text-slate-400 font-semibold">@</span>
-                                            <input 
-                                                type="text" 
-                                                placeholder="username" 
-                                                value={authUsername.replace(/^@/, '')} 
-                                                onChange={e => setAuthUsername(e.target.value)} 
-                                                className={`w-full text-xs p-2.5 pl-7 rounded-xl border focus:outline-none focus:border-blue-500 ${inputClass}`} 
-                                                required 
-                                            />
-                                        </div>
                                     </div>
                                     <div className="flex gap-2 w-full">
                                         <select value={authGrade} onChange={e => setAuthGrade(e.target.value)} className={`flex-1 min-w-0 text-xs p-2.5 rounded-xl border focus:outline-none focus:border-blue-500 ${inputClass}`} required>
