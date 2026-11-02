@@ -110,7 +110,9 @@
             const [adminUsers, setAdminUsers] = useState({});
             const [nameRequests, setNameRequests] = useState([]);
 
-            const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+            // Состояния для меню карточек и редактирования записей
+            const [openMenuId, setOpenMenuId] = useState(null);
+            const [editingItem, setEditingItem] = useState(null); // { id, type, title, desc, text, imageUrl }
 
             const [newLostTitle, setNewLostTitle] = useState('');
             const [newLostDesc, setNewLostDesc] = useState('');
@@ -393,31 +395,46 @@
 
             const handleDeleteAction = (firebaseId, type) => {
                 if (!checkRegistrationOrPrompt()) return;
-                
-                if (confirmDeleteId === firebaseId) {
-                    const path = type === 'lost' ? 'lost_items' : 'posts';
-                    db.ref(`${path}/${firebaseId}`).remove().then(() => {
-                        setConfirmDeleteId(null);
-                        showNotification("Успешно удалено!");
-                    }).catch(() => {
-                        showNotification("Ошибка удаления");
-                    });
-                } else {
-                    setConfirmDeleteId(firebaseId);
-                    showNotification("⚠️ Нажмите крестик еще раз для подтверждения");
-                    setTimeout(() => { setConfirmDeleteId(null); }, 4000);
-                }
+                const path = type === 'lost' ? 'lost_items' : 'posts';
+                db.ref(`${path}/${firebaseId}`).remove().then(() => {
+                    setOpenMenuId(null);
+                    showNotification("Успешно удалено!");
+                }).catch(() => {
+                    showNotification("Ошибка удаления");
+                });
             };
 
             const toggleLostStatus = (firebaseId, currentStatus) => {
                 if (!checkRegistrationOrPrompt()) return;
                 const nextStatus = currentStatus === 'Найдено' ? 'Активно' : 'Найдено';
                 db.ref(`lost_items/${firebaseId}`).update({ status: nextStatus });
+                setOpenMenuId(null);
             };
 
             const togglePinPost = (firebaseId, currentPinned) => {
                 if (!isAdmin()) return;
                 db.ref(`posts/${firebaseId}`).update({ isPinned: !currentPinned });
+                setOpenMenuId(null);
+            };
+
+            // Сохранение изменений редактируемого объявления / поста
+            const handleSaveEditItem = (e) => {
+                e.preventDefault();
+                if (!editingItem) return;
+                const { id, type, title, desc, text, imageUrl } = editingItem;
+                const path = type === 'lost' ? 'lost_items' : 'posts';
+
+                let updateData = {};
+                if (type === 'lost') {
+                    updateData = { title: title.trim(), desc: desc.trim(), imageUrl: imageUrl };
+                } else {
+                    updateData = { text: text.trim(), imageUrl: imageUrl };
+                }
+
+                db.ref(`${path}/${id}`).update(updateData).then(() => {
+                    setEditingItem(null);
+                    showNotification("Изменения сохранены! ✅");
+                });
             };
 
             const toggleLikePost = (postId, likesObj) => {
@@ -659,7 +676,6 @@
                             <div className="space-y-4 apple-tab-view">
                                 <h2 className="text-xs font-bold text-blue-500 uppercase tracking-widest px-1">Панель администратора</h2>
                                 
-                                {/* Заявки на смену имени */}
                                 <div className={`p-4 rounded-2xl border space-y-3 ${cardClass}`}>
                                     <h3 className="text-xs font-bold text-amber-400 flex items-center justify-between">
                                         <span>Заявки на смену имени</span>
@@ -692,7 +708,6 @@
                                     )}
                                 </div>
 
-                                {/* Принудительное управление данными пользователя (Главный Админ) */}
                                 {isRootAdmin() && (
                                     <div className={`p-4 rounded-2xl border space-y-3 ${cardClass}`}>
                                         <h3 className="text-xs font-bold text-indigo-400">Управление пользователем (Главный Админ)</h3>
@@ -740,7 +755,6 @@
                                     </div>
                                 )}
 
-                                {/* Раздел назначения и снятия администраторов */}
                                 <div className={`p-4 rounded-2xl border space-y-3 ${cardClass}`}>
                                     <h3 className="text-xs font-bold text-blue-400">Управление администраторами</h3>
                                     <form onSubmit={addAdminByUsername} className="flex gap-2">
@@ -774,7 +788,6 @@
                                     </div>
                                 </div>
 
-                                {/* Бан пользователей */}
                                 <div className={`p-4 rounded-2xl border space-y-3 ${cardClass}`}>
                                     <h3 className="text-xs font-bold text-rose-500">Бан пользователей</h3>
                                     <form onSubmit={(e) => {
@@ -839,11 +852,11 @@
                                 <div className="space-y-3">
                                     {filteredLostItems.map(item => {
                                         const isFound = item.status === 'Найдено';
-                                        const canDelete = canDeleteOrEdit(item.authorUsername, item.authorTgId);
-                                        const isConfirming = confirmDeleteId === item.firebaseId;
+                                        const canModify = canDeleteOrEdit(item.authorUsername, item.authorTgId);
+                                        const isMenuOpen = openMenuId === item.firebaseId;
 
                                         return (
-                                            <div key={item.firebaseId} className={`border rounded-[24px] p-4 space-y-2.5 ${isFound ? 'border-emerald-500/50 bg-emerald-500/5' : ''} ${cardClass}`}>
+                                            <div key={item.firebaseId} className={`border rounded-[24px] p-4 space-y-2.5 relative ${isFound ? 'border-emerald-500/50 bg-emerald-500/5' : ''} ${cardClass}`}>
                                                 {item.imageUrl && (
                                                     <div className="w-full bg-slate-950 rounded-xl overflow-hidden flex items-center justify-center">
                                                         <img src={item.imageUrl} alt="Фото" className="w-full h-auto object-contain max-h-[300px]" />
@@ -860,28 +873,45 @@
                                                 <div className="flex justify-between items-center pt-2 border-t border-slate-700/40">
                                                     <span className="text-[11px] font-medium text-slate-300">{item.author} ({item.classStr})</span>
                                                     
-                                                    <div className="flex gap-1.5 items-center">
-                                                        {canDelete && (
-                                                            <button 
-                                                                onClick={() => toggleLostStatus(item.firebaseId, item.status)} 
-                                                                title={isFound ? "Вернуть в активные" : "Отметить как найденное"}
-                                                                className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 flex items-center justify-center text-sm font-bold transition">
-                                                                {isFound ? '↩' : '➔'}
-                                                            </button>
-                                                        )}
+                                                    <div className="flex gap-2 items-center">
                                                         <button 
                                                             onClick={() => openTelegramChat(item.authorUsername, item.authorTgId, item.title, 'Потеряшка')} 
                                                             title="Написать автору"
-                                                            className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 flex items-center justify-center text-sm font-semibold transition">
-                                                            ✏️
+                                                            className="text-xs font-semibold text-blue-400 hover:underline flex items-center gap-1 bg-blue-500/10 px-3 py-1.5 rounded-xl">
+                                                            ✏️ Написать
                                                         </button>
-                                                        {canDelete && (
-                                                            <button 
-                                                                onClick={() => handleDeleteAction(item.firebaseId, 'lost')} 
-                                                                title={isConfirming ? "Нажмите еще раз для подтверждения" : "Удалить"}
-                                                                className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold transition ${isConfirming ? 'bg-rose-600 text-white animate-pulse' : 'bg-rose-500/10 text-rose-400 hover:bg-rose-500/20'}`}>
-                                                                ✕
-                                                            </button>
+
+                                                        {canModify && (
+                                                            <div className="relative">
+                                                                <button 
+                                                                    onClick={() => setOpenMenuId(isMenuOpen ? null : item.firebaseId)}
+                                                                    className="w-8 h-8 rounded-xl bg-slate-700/50 hover:bg-slate-700 text-slate-300 font-bold flex items-center justify-center text-sm transition">
+                                                                    ⋮
+                                                                </button>
+
+                                                                {isMenuOpen && (
+                                                                    <div className="absolute right-0 bottom-10 w-44 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl z-30 p-1.5 space-y-1 text-xs">
+                                                                        <button 
+                                                                            onClick={() => toggleLostStatus(item.firebaseId, item.status)}
+                                                                            className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800 text-amber-400 font-medium">
+                                                                            {isFound ? '↩ Сделать активным' : '➔ Отметить найденным'}
+                                                                        </button>
+                                                                        <button 
+                                                                            onClick={() => {
+                                                                                setEditingItem({ id: item.firebaseId, type: 'lost', title: item.title, desc: item.desc || '', imageUrl: item.imageUrl || '' });
+                                                                                setOpenMenuId(null);
+                                                                            }}
+                                                                            className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800 text-blue-400 font-medium">
+                                                                            ✏️ Редактировать / фото
+                                                                        </button>
+                                                                        <button 
+                                                                            onClick={() => handleDeleteAction(item.firebaseId, 'lost')}
+                                                                            className="w-full text-left px-3 py-2 rounded-xl hover:bg-rose-500/20 text-rose-400 font-medium">
+                                                                            ✕ Удалить объявление
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                         )}
                                                     </div>
                                                 </div>
@@ -924,11 +954,11 @@
                                         const comments = p.comments ? Object.keys(p.comments).map(cKey => ({ id: cKey, ...p.comments[cKey] })) : [];
                                         const likesCount = p.likes ? Object.keys(p.likes).length : 0;
                                         const userLiked = currentUser && currentUser.username && p.likes && p.likes[currentUser.username.toLowerCase()];
-                                        const canDelete = canDeleteOrEdit(p.authorUsername, p.authorTgId);
-                                        const isConfirming = confirmDeleteId === p.firebaseId;
+                                        const canModify = canDeleteOrEdit(p.authorUsername, p.authorTgId);
+                                        const isMenuOpen = openMenuId === p.firebaseId;
 
                                         return (
-                                            <div key={p.firebaseId} className={`border rounded-[24px] p-4 space-y-3 ${p.isPinned ? 'border-blue-500/60 bg-blue-500/5' : ''} ${cardClass}`}>
+                                            <div key={p.firebaseId} className={`border rounded-[24px] p-4 space-y-3 relative ${p.isPinned ? 'border-blue-500/60 bg-blue-500/5' : ''} ${cardClass}`}>
                                                 <div className="flex justify-between items-center">
                                                     <div className="flex items-center space-x-2">
                                                         <div className="w-7 h-7 rounded-xl bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center">
@@ -962,28 +992,45 @@
                                                         <button 
                                                             onClick={() => openTelegramChat(p.authorUsername, p.authorTgId, p.text.substring(0, 15), 'Пост')} 
                                                             title="Написать автору"
-                                                            className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 flex items-center justify-center text-sm font-semibold transition">
-                                                            ✏️
+                                                            className="text-xs font-semibold text-blue-400 hover:underline flex items-center gap-1 bg-blue-500/10 px-3 py-1.5 rounded-xl">
+                                                            ✏️ Написать
                                                         </button>
                                                     </div>
-                                                    <div className="flex gap-1.5 items-center">
-                                                        {isAdmin() && (
+                                                    
+                                                    {canModify && (
+                                                        <div className="relative">
                                                             <button 
-                                                                onClick={() => togglePinPost(p.firebaseId, p.isPinned)} 
-                                                                title="Закрепить/открепить"
-                                                                className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 flex items-center justify-center text-xs font-bold transition">
-                                                                📌
+                                                                onClick={() => setOpenMenuId(isMenuOpen ? null : p.firebaseId)}
+                                                                className="w-8 h-8 rounded-xl bg-slate-700/50 hover:bg-slate-700 text-slate-300 font-bold flex items-center justify-center text-sm transition">
+                                                                ⋮
                                                             </button>
-                                                        )}
-                                                        {canDelete && (
-                                                            <button 
-                                                                onClick={() => handleDeleteAction(p.firebaseId, 'post')} 
-                                                                title={isConfirming ? "Нажмите еще раз для подтверждения" : "Удалить"}
-                                                                className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold transition ${isConfirming ? 'bg-rose-600 text-white animate-pulse' : 'bg-rose-500/10 text-rose-400 hover:bg-rose-500/20'}`}>
-                                                                ✕
-                                                            </button>
-                                                        )}
-                                                    </div>
+
+                                                            {isMenuOpen && (
+                                                                <div className="absolute right-0 bottom-10 w-44 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl z-30 p-1.5 space-y-1 text-xs">
+                                                                    {isAdmin() && (
+                                                                        <button 
+                                                                            onClick={() => togglePinPost(p.firebaseId, p.isPinned)}
+                                                                            className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800 text-blue-400 font-medium">
+                                                                            {p.isPinned ? '📌 Открепить' : '📌 Закрепить'}
+                                                                        </button>
+                                                                    )}
+                                                                    <button 
+                                                                        onClick={() => {
+                                                                            setEditingItem({ id: p.firebaseId, type: 'post', text: p.text || '', imageUrl: p.imageUrl || '' });
+                                                                            setOpenMenuId(null);
+                                                                        }}
+                                                                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800 text-blue-400 font-medium">
+                                                                        ✏️ Редактировать / фото
+                                                                    </button>
+                                                                    <button 
+                                                                        onClick={() => handleDeleteAction(p.firebaseId, 'post')}
+                                                                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-rose-500/20 text-rose-400 font-medium">
+                                                                        ✕ Удалить пост
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </div>
 
                                                 <div className="pt-2 border-t border-slate-700/40 space-y-2">
@@ -1026,6 +1073,63 @@
                             </div>
                         )}
                     </main>
+
+                    {/* Модальное окно редактирования записи (текст + фото) */}
+                    {editingItem && (
+                        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+                            <div className={`border rounded-[32px] p-6 w-full max-w-xs space-y-4 apple-modal-anim ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
+                                <h3 className="font-bold text-center text-sm">Редактирование записи</h3>
+                                <form onSubmit={handleSaveEditItem} className="space-y-3 w-full">
+                                    {editingItem.type === 'lost' ? (
+                                        <>
+                                            <input 
+                                                type="text" 
+                                                value={editingItem.title} 
+                                                onChange={e => setEditingItem({ ...editingItem, title: e.target.value })} 
+                                                className={`w-full text-xs p-2.5 rounded-xl border ${inputClass}`} 
+                                                required 
+                                            />
+                                            <textarea 
+                                                value={editingItem.desc} 
+                                                onChange={e => setEditingItem({ ...editingItem, desc: e.target.value })} 
+                                                className={`w-full text-xs p-2.5 rounded-xl border resize-none h-20 ${inputClass}`} 
+                                            />
+                                        </>
+                                    ) : (
+                                        <textarea 
+                                            value={editingItem.text} 
+                                            onChange={e => setEditingItem({ ...editingItem, text: e.target.value })} 
+                                            className={`w-full text-xs p-2.5 rounded-xl border resize-none h-24 ${inputClass}`} 
+                                            required 
+                                        />
+                                    )}
+
+                                    <div className="space-y-2">
+                                        {editingItem.imageUrl && (
+                                            <div className="relative w-full h-24 bg-slate-950 rounded-xl overflow-hidden flex items-center justify-center">
+                                                <img src={editingItem.imageUrl} alt="Превью" className="h-full object-contain" />
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => setEditingItem({ ...editingItem, imageUrl: '' })}
+                                                    className="absolute top-1 right-1 bg-rose-600 text-white text-[10px] px-1.5 py-0.5 rounded-lg">
+                                                    Удалить фото ✕
+                                                </button>
+                                            </div>
+                                        )}
+                                        <label className="cursor-pointer block text-center text-xs px-3.5 py-2.5 rounded-xl font-medium border bg-slate-800 text-slate-200 hover:bg-slate-700">
+                                            {editingItem.imageUrl ? '📷 Заменить фото' : '📷 Добавить фото'}
+                                            <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, (base64) => setEditingItem({ ...editingItem, imageUrl: base64 }))} className="hidden" />
+                                        </label>
+                                    </div>
+
+                                    <div className="flex gap-2 pt-1 w-full">
+                                        <button type="button" onClick={() => setEditingItem(null)} className="flex-1 text-xs py-3 rounded-xl bg-slate-800 text-slate-300">Отмена</button>
+                                        <button type="submit" className="flex-1 bg-blue-600 text-white text-xs py-3 rounded-xl font-semibold">Сохранить</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
 
                     {showAuthModal && (
                         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
