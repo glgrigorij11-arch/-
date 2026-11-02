@@ -189,7 +189,7 @@
 
             const checkRegistrationOrPrompt = () => {
                 if (!isFullyRegistered()) {
-                    showNotification("⚠️ Заполните Имя и Фамилию для выполнения действий!");
+                    showNotification("⚠️ Укажите Имя и Фамилию для выполнения этого действия!");
                     if (currentUser) {
                         setAuthFirstName(currentUser.firstName || '');
                         setAuthLastName(currentUser.lastName || '');
@@ -275,8 +275,27 @@
 
             const canDeleteOrEdit = (itemAuthorUsername, itemAuthorTgId) => {
                 if (!currentUser) return false;
-                const isAuthor = (currentUser.username && currentUser.username === itemAuthorUsername) || (currentUser.tgId && currentUser.tgId === itemAuthorTgId);
+                const isAuthor = (currentUser.username && itemAuthorUsername && currentUser.username.toLowerCase() === itemAuthorUsername.toLowerCase()) || 
+                                 (currentUser.tgId && currentUser.tgId === itemAuthorTgId);
                 return isAdmin() || isAuthor;
+            };
+
+            const removeLostItem = (firebaseId) => {
+                if (!checkRegistrationOrPrompt()) return;
+                db.ref(`lost_items/${firebaseId}`).remove().then(() => {
+                    showNotification("Объявление удалено!");
+                }).catch(() => {
+                    showNotification("Ошибка при удалении");
+                });
+            };
+
+            const removePost = (firebaseId) => {
+                if (!checkRegistrationOrPrompt()) return;
+                db.ref(`posts/${firebaseId}`).remove().then(() => {
+                    showNotification("Пост удален!");
+                }).catch(() => {
+                    showNotification("Ошибка при удалении");
+                });
             };
 
             const toggleLostStatus = (firebaseId, currentStatus) => {
@@ -416,6 +435,7 @@
             };
 
             const removeComment = (postId, commentId) => {
+                if (!checkRegistrationOrPrompt()) return;
                 db.ref(`posts/${postId}/comments/${commentId}`).remove();
             };
 
@@ -625,6 +645,8 @@
                                 <div className="space-y-3">
                                     {filteredLostItems.map(item => {
                                         const isFound = item.status === 'Найдено';
+                                        const canDelete = canDeleteOrEdit(item.authorUsername, item.authorTgId);
+
                                         return (
                                             <div key={item.firebaseId} className={`border rounded-[24px] p-4 space-y-2.5 ${isFound ? 'border-emerald-500/50 bg-emerald-500/5' : ''} ${cardClass}`}>
                                                 {item.imageUrl && (
@@ -643,7 +665,7 @@
                                                 <div className="flex justify-between items-center pt-2 border-t border-slate-700/40">
                                                     <span className="text-[10px] text-slate-400">{item.author}</span>
                                                     <div className="flex gap-1.5 items-center">
-                                                        {canDeleteOrEdit(item.authorUsername, item.authorTgId) && (
+                                                        {canDelete && (
                                                             <button onClick={() => toggleLostStatus(item.firebaseId, item.status)} className="text-[11px] px-2.5 py-1 rounded-xl bg-amber-500/10 text-amber-400 font-semibold">
                                                                 {isFound ? 'Вернуть' : 'Найдено ✅'}
                                                             </button>
@@ -651,6 +673,11 @@
                                                         <button onClick={() => openTelegramChat(item.authorUsername, item.authorTgId, item.title, 'Потеряшка')} className="bg-blue-500/10 text-blue-400 text-[11px] px-3 py-1.5 rounded-xl font-semibold">
                                                             Написать
                                                         </button>
+                                                        {canDelete && (
+                                                            <button onClick={() => removeLostItem(item.firebaseId)} className="bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 text-[11px] px-2.5 py-1.5 rounded-xl font-semibold transition">
+                                                                Удалить
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </div>
@@ -692,6 +719,7 @@
                                         const comments = p.comments ? Object.keys(p.comments).map(cKey => ({ id: cKey, ...p.comments[cKey] })) : [];
                                         const likesCount = p.likes ? Object.keys(p.likes).length : 0;
                                         const userLiked = currentUser && currentUser.username && p.likes && p.likes[currentUser.username.toLowerCase()];
+                                        const canDelete = canDeleteOrEdit(p.authorUsername, p.authorTgId);
 
                                         return (
                                             <div key={p.firebaseId} className={`border rounded-[24px] p-4 space-y-3 ${p.isPinned ? 'border-blue-500/60 bg-blue-500/5' : ''} ${cardClass}`}>
@@ -729,21 +757,26 @@
                                                             Написать
                                                         </button>
                                                     </div>
-                                                    <div className="flex gap-2">
+                                                    <div className="flex gap-2 items-center">
                                                         {isAdmin() && (
                                                             <button onClick={() => togglePinPost(p.firebaseId, p.isPinned)} className="text-[11px] text-blue-400 font-semibold">📌</button>
+                                                        )}
+                                                        {canDelete && (
+                                                            <button onClick={() => removePost(p.firebaseId)} className="bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 text-[11px] px-2.5 py-1 rounded-xl font-semibold transition">
+                                                                Удалить
+                                                            </button>
                                                         )}
                                                     </div>
                                                 </div>
 
                                                 <div className="pt-2 border-t border-slate-700/40 space-y-2">
                                                     {comments.map(c => (
-                                                        <div key={c.id} className="p-2 rounded-xl text-[11px] bg-slate-900/60 border border-slate-800 flex justify-between">
+                                                        <div key={c.id} className="p-2 rounded-xl text-[11px] bg-slate-900/60 border border-slate-800 flex justify-between items-center">
                                                             <div>
                                                                 <span className="font-bold">{c.author}</span>: <span className="text-slate-300">{c.text}</span>
                                                             </div>
-                                                            {(isAdmin() || (currentUser && currentUser.name === c.author)) && (
-                                                                <button onClick={() => removeComment(p.firebaseId, c.id)} className="text-rose-400 font-bold ml-2">✕</button>
+                                                            {(isAdmin() || (currentUser && (currentUser.firstName + ' ' + currentUser.lastName) === c.author)) && (
+                                                                <button onClick={() => removeComment(p.firebaseId, c.id)} className="text-rose-400 font-bold ml-2 hover:opacity-75">✕</button>
                                                             )}
                                                         </div>
                                                     ))}
